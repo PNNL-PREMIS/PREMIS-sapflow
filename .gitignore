@@ -1,0 +1,12 @@
+
+
+# RStudio files
+.Rproj.user/
+
+# Session data files
+.RData
+R/PREMIS-sapflow.Rproj
+
+# History files
+R/.Rhistory
+*.csv
