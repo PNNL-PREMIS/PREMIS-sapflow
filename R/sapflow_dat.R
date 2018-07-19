@@ -7,6 +7,7 @@ library(tibble)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+library(reshape2)
 
 # Load data and prepare data to be combined into one dataframe
 cat("Loading data...")
@@ -38,17 +39,25 @@ combine <- bind_rows(control, fresh, salt, shore)
 cat("Generating plots...")
 control_plot <- ggplot(data = control, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
-  facet_wrap(~Tree, ncol = 2)
+  facet_wrap(~Tree, ncol = 2) +
+  ggtitle("Control")
+ggsave("../control.png")
 
 fresh_plot <- ggplot(data = fresh, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
-  facet_wrap(~Tree, ncol = 2)
+  facet_wrap(~Tree, ncol = 2) +
+  ggtitle("Fresh")
+ggsave("../fresh.png")
 
 salt_plot <- ggplot(data = salt, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
-  facet_wrap(~Tree, ncol = 2)
+  facet_wrap(~Tree, ncol = 2) +
+  ggtitle("Salt")
+ggsave("../salt.png")
 
 shore_plot <- ggplot(data = shore, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
-  facet_wrap(~Tree, ncol = 2)
+  facet_wrap(~Tree, ncol = 2) + 
+  ggtitle("Shore")
+ggsave("../shore.png")
 
