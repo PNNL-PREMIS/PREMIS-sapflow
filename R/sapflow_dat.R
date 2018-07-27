@@ -40,24 +40,28 @@ cat("Generating plots...")
 control_plot <- ggplot(data = control, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) +
+  ylim(0,1) +
   ggtitle("Control")
 ggsave("../control.png")
 
 fresh_plot <- ggplot(data = fresh, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) +
+  ylim(0,1) +
   ggtitle("Fresh")
 ggsave("../fresh.png")
 
 salt_plot <- ggplot(data = salt, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) +
+  ylim(0,1) +
   ggtitle("Salt")
 ggsave("../salt.png")
 
 shore_plot <- ggplot(data = shore, aes(x = Record, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) + 
+  ylim(0,1) +
   ggtitle("Shore")
 ggsave("../shore.png")
 
