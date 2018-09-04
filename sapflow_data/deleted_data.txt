@@ -1,4 +1,4 @@
 Deleted Sapflow Data
-5/15-5/19: rain event
+5/15-5/19: rain event - deleted by Charlotte's request
 Control 1 5/10-6/7: sensor placed on incorrect species
 Fresh 3 6/12-6/23: sensor damaged due to field mouse
