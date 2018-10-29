@@ -36,10 +36,19 @@ colnames(shore) <-c("Timestamp", "Record", "Tree", "Voltage")
 shore$Timestamp <- mdy_hm(shore$Timestamp)
 
 load("C:/Users/penn529/Desktop/SERC_met_data_for_Charlotte_&_Stephanie.Rdata")
+# Create 30 minute averages
 averaged <- SERC_met %>% 
   group_by(Date = cut(date.time, breaks = "30 min"), variable) %>% 
-  summarize(mean = mean(value, na.rm = TRUE), date.time = mean(date.time), n = n())
+  summarize(mean = mean(value, na.rm = TRUE), date.time = mean(date.time), n = n()) %>%
+  separate(Date, into = c("Date", "time"), sep = " ") %>%
+  separate(time, into = c("h", "m"), sep = ":")
+
+averaged$time <- paste0(averaged$h, averaged$m)
+
+
+# Pull out data needed for Baseliner
 met_wx <- tibble(date.time = averaged$Date[which(averaged$variable == "PAR")],
+                 time = averaged$time[which(averaged$variable == "PAR")],
                  PAR = averaged$mean[which(averaged$variable == "PAR")] * 0.327,
                  es = (6.11 *10^((7.5 * averaged$mean[which(averaged$variable == "Temp")])/(273.3 +  averaged$mean[which(averaged$variable == "Temp")])))/10,
                  VPD = ((100 - averaged$mean[which(averaged$variable == "RH")]) * es)/100)
@@ -47,10 +56,12 @@ met_wx <- tibble(date.time = averaged$Date[which(averaged$variable == "PAR")],
 # Combine into one dataframe
 cat("Combining into single dataframe...")
 combine <- bind_rows(control, fresh, salt, shore)
-baselinerDat <- tibble(year = year(averaged$Date), 
+baselinerDat <- tibble(year = year(met_wx$date.time), 
+                       yday = yday(met_wx$date.time),
+                       time = met_wx$time,
                        VPD = met_wx$VPD,
-                       PAR = met_wx$PAR,
-                       sapflux = combine)
+                       PAR = met_wx$PAR)#,
+                       sapflux = combine # need to truncate wx data to match sapflow
 
 
 # Plot using ggplot and facet by Tree
