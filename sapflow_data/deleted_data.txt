@@ -1,4 +1,4 @@
-Deleted Sapflow Data
+Deleted Sapflow Data (replaced with NaN for continuous timeseries)
 5/15-5/19: rain event - deleted by Charlotte's request
 Control 1 5/10-6/7: sensor placed on incorrect species
 Fresh 3 6/12-6/23: sensor damaged due to field mouse
@@ -6,3 +6,8 @@ Control (all sensors): 8/22 12:30PM - 8/24 12:30PM - two days after power outage
 Fresh (all sensors): 8/22 12:30PM - 8/24 12:30PM - two days after power outage
 Salt (all sensors): 8/22 12:30PM - 8/24 12:30PM - two days after power outage
 Shore (all sensors): 8/16 12:30PM - 8/18 12:30PM - two days after power outage
+
+Power Outage Data (need to be replaced with NaN for continuous timeseries)
+Control
+8/8/2018 6:00PM - 8/22/2018 12:30PM
+9/28/2018 3:00PM - 10/2/2018 10:00AM
