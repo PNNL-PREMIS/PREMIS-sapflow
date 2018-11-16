@@ -27,7 +27,7 @@ shore <- read_csv("../sapflow_data/CR1000-SHORE_Table1.csv",
                   col_names = c("Timestamp", "Record", "Sh1", "Sh2", "Sh3", "Sh4", "Sh5", "Sh6")) 
 shore$Timestamp <- mdy_hm(shore$Timestamp)
 
-load("C:/Users/penn529/Desktop/SERC_met_data_for_Charlotte_&_Stephanie.Rdata")
+load("../SERC_met_data_for_Charlotte_&_Stephanie.Rdata")
 
 
 # Create 30 minute averages
