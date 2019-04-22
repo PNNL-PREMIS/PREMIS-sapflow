@@ -141,6 +141,16 @@ colnames(fresh_p) <-c("Timestamp", "Record", "Tree", "Voltage")
 shore_p <- melt(id.vars = c("Timestamp", "Record"), measure.vars = c("Sh1", "Sh2", "Sh3", "Sh4", "Sh5", "Sh6"))
 colnames(shore_p) <-c("Timestamp", "Record", "Tree", "Voltage")
 
+# ----- Quick plot for BC data ----- #
+
+east <- read_csv("../BC/CR1000-EAST_2019_4_18_Table1.dat", skip = 4, 
+                 col_names = c("Timestamp", "Record", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8")) %>% 
+  melt(id.vars = c("Timestamp", "Record"), measure.vars = c("E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"))
+
+west <- read_csv("../BC/CR1000-WEST_2019_4_18_Table1.dat", skip = 4, 
+                 col_names = c("Timestamp", "Record", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8")) %>% 
+  melt(id.vars = c("Timestamp", "Record"), measure.vars = c("W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"))
+
 control_plot <- ggplot(data = control_p, aes(x = Timestamp, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) +
