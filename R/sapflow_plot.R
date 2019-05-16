@@ -51,7 +51,6 @@ ggplot(data = control_p, aes(x = Timestamp, y = Voltage, group = Tree)) +
   facet_wrap(~Tree, ncol = 2) +
   ylim(0,1) +
   ggtitle("Control")
-print(control_plot)
 ggsave("../control.png")
 
 ggplot(data = fresh_p, aes(x = Timestamp, y = Voltage, group = Tree)) +
@@ -80,17 +79,37 @@ ggsave("../shore.png")
 east <- read_csv("../BC/CR1000-EAST_2019_4_18_Table1.dat", skip = 4, 
                  col_names = c("Timestamp", "Record", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8")) %>% 
   melt(id.vars = c("Timestamp", "Record"), measure.vars = c("E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"))
+colnames(east) <-c("Timestamp", "Record", "Tree", "Voltage")
 
 west <- read_csv("../BC/CR1000-WEST_2019_4_18_Table1.dat", skip = 4, 
                  col_names = c("Timestamp", "Record", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8")) %>% 
   melt(id.vars = c("Timestamp", "Record"), measure.vars = c("W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"))
+colnames(west) <-c("Timestamp", "Record", "Tree", "Voltage")
 
+# ----- This plots all East trees in one plot -----
 ggplot(data = east, aes(x = Timestamp, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) +
   ylim(0,1) +
   ggtitle("BC-East")
 
+## ----- Plotting an individual tree -----
+
+# This plots one individual tree (in this example, we are plotting E1)
+ggplot(data = filter(east, Tree == "E1"), aes(x = Timestamp, y = Voltage)) +
+  geom_line() +
+  facet_wrap(~Tree, ncol = 2) +
+  ggtitle("East 1")
+# As you can see from the plot, something went wrong in April with the data, if you would like to only view certain
+# voltage data, you can change the y-axis limits using "ylim(0,1) +". For example...
+ggplot(data = filter(east, Tree == "E1"), aes(x = Timestamp, y = Voltage)) +
+  geom_line() +
+  ylim(0,1) + # adjust the y limits here
+  facet_wrap(~Tree, ncol = 2) +
+  ggtitle("East 1")
+# You can adjust the y limits as you want based on the range in voltage for each tree
+
+# ----- This plots all West trees in one plot -----
 ggplot(data = west, aes(x = Timestamp, y = Voltage, group = Tree)) +
   geom_line() +
   facet_wrap(~Tree, ncol = 2) + 
