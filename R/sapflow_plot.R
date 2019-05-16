@@ -96,10 +96,10 @@ ggplot(data = east, aes(x = Timestamp, y = Voltage, group = Tree)) +
 ## ----- Plotting an individual tree -----
 
 # This plots one individual tree (in this example, we are plotting E1)
-ggplot(data = filter(east, Tree == "E1"), aes(x = Timestamp, y = Voltage)) +
+ggplot(data = filter(east, Tree == "E1"), aes(x = Timestamp, y = Voltage)) + # here we filter for only E1
   geom_line() +
   facet_wrap(~Tree, ncol = 2) +
-  ggtitle("East 1")
+  ggtitle("East 1") # this displays a plot title
 # As you can see from the plot, something went wrong in April with the data, if you would like to only view certain
 # voltage data, you can change the y-axis limits using "ylim(0,1) +". For example...
 ggplot(data = filter(east, Tree == "E1"), aes(x = Timestamp, y = Voltage)) +
