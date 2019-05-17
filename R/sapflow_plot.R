@@ -76,12 +76,12 @@ ggsave("../shore.png")
 
 # ----- Quick plot for BC data ----- #
 
-east <- read_csv("../BC/CR1000-EAST_2019_4_18_Table1.dat", skip = 4, 
+east <- read_tsv("../BC/CR1000 BC EAST_Table1_20190505.dat", skip = 4, 
                  col_names = c("Timestamp", "Record", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8")) %>% 
   melt(id.vars = c("Timestamp", "Record"), measure.vars = c("E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"))
 colnames(east) <-c("Timestamp", "Record", "Tree", "Voltage")
 
-west <- read_csv("../BC/CR1000-WEST_2019_4_18_Table1.dat", skip = 4, 
+west <- read_tsv("../BC/CR1000 BC WEST_Table1_20190505.dat", skip = 4, 
                  col_names = c("Timestamp", "Record", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8")) %>% 
   melt(id.vars = c("Timestamp", "Record"), measure.vars = c("W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"))
 colnames(west) <-c("Timestamp", "Record", "Tree", "Voltage")
