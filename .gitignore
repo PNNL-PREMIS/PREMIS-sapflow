@@ -10,3 +10,4 @@ R/PREMIS-sapflow.Rproj
 # History files
 R/.Rhistory
 *.xml
+.Rproj.user
