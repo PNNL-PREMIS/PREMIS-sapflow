@@ -1,0 +1,10 @@
+---
+title: "sapflow-Rs"
+author: "SP"
+date: "9/10/2019"
+output: html_document
+---
+
+##Prelim plots to make:
+* daily cycle of sapflow using hour of day on x axis
+
