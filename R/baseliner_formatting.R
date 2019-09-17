@@ -70,7 +70,7 @@ cat("Combining into single dataframe...")
 
 # Control
 cat("Formatting control data...")
-control.bl <- right_join(met_wx, control, by = "Timestamp")
+control.bl <- right_join(wx_data, control, by = "Timestamp")
 t.series.c <-tibble(Timestamp = seq(from=as.POSIXct(first(control.bl$Timestamp)),
                                     to=as.POSIXct(last(control.bl$Timestamp)),
                                     by="30 min"))
@@ -84,59 +84,61 @@ control.bl <- left_join(t.series.c, control.bl, by = "Timestamp")
   control.bl$time <- paste0(control.bl$h, control.bl$m)
   control.bl[is.na(control.bl)] <- NaN
   control.bl <- control.bl %>% 
-    select(plot.ID, year, yday, time, VPD, PAR, C1, C2, C3, C4, C5, C6, C7, C8)
+    select(plot.ID, year, yday, time, VPD_kPa, PAR, C1, C2, C3, C4, C5, C6, C7, C8)
 
 # Fresh
 cat("Formatting fresh data...")
-fresh.bl <- right_join(met_wx, fresh, by = "Timestamp")
+fresh.bl <- right_join(wx_data, fresh, by = "Timestamp")
 t.series.f <-tibble(Timestamp = seq(from=as.POSIXct(first(fresh.bl$Timestamp)),
                                     to=as.POSIXct(last(fresh.bl$Timestamp)),
                                     by="30 min"))
 fresh.bl <- left_join(t.series.f, fresh.bl, by = "Timestamp")
-  fresh.bl$plot.ID <- rep(1, nrow(fresh.bl))
-  fresh.bl$year <- year(fresh.bl$Timestamp)
-  fresh.bl$yday <- yday(fresh.bl$Timestamp)
-  fresh.bl <- fresh.bl %>%
-    separate(Timestamp, into = c("date", "time"), sep = " ") %>%
-    separate(time, into = c("h", "m"), sep = ":")
-  fresh.bl$time <- paste0(fresh.bl$h, fresh.bl$m)
-  fresh.bl[is.na(fresh.bl)] <- NaN
-  fresh.bl <- fresh.bl %>% 
-    select(plot.ID, year, yday, time, VPD, PAR, F1, F2, F3, F4, F5, F6, F7, F8)
+fresh.bl$plot.ID <- rep(2, nrow(fresh.bl))
+fresh.bl$year <- year(fresh.bl$Timestamp)
+fresh.bl$yday <- yday(fresh.bl$Timestamp)
+fresh.bl <- fresh.bl %>%
+  separate(Timestamp, into = c("date", "time"), sep = " ") %>%
+  separate(time, into = c("h", "m"), sep = ":")
+fresh.bl$time <- paste0(fresh.bl$h, fresh.bl$m)
+fresh.bl[is.na(fresh.bl)] <- NaN
+fresh.bl <- fresh.bl %>% 
+  select(plot.ID, year, yday, time, VPD_kPa, PAR, F1, F2, F3, F4, F5, F6, F7, F8)
 
 # Salt
 cat("Formating salt data...")
-salt.bl <- right_join(met_wx, salt, by = "Timestamp")
+salt.bl <- right_join(wx_data, salt, by = "Timestamp")
 t.series.s <-tibble(Timestamp = seq(from=as.POSIXct(first(salt.bl$Timestamp)),
                                     to=as.POSIXct(last(salt.bl$Timestamp)),
                                     by="30 min"))
 salt.bl <- left_join(t.series.s, salt.bl, by = "Timestamp")
-  salt.bl$plot.ID <- rep(4, nrow(salt.bl))
-  salt.bl$year <- year(salt.bl$Timestamp)
-  salt.bl$yday <- yday(salt.bl$Timestamp)
-  salt.bl <- salt.bl %>%
-    separate(Timestamp, into = c("date", "time"), sep = " ") %>%
-    separate(time, into = c("h", "m"), sep = ":")
-  salt.bl$time <- paste0(salt.bl$h, salt.bl$m)
-  salt.bl[is.na(salt.bl)] <- NaN
-  salt.bl <- salt.bl %>% select(plot.ID, year, yday, time, VPD, PAR, S1, S2, S3, S4, S5, S6, S7, S8)
+salt.bl$plot.ID <- rep(2, nrow(salt.bl))
+salt.bl$year <- year(salt.bl$Timestamp)
+salt.bl$yday <- yday(salt.bl$Timestamp)
+salt.bl <- salt.bl %>%
+  separate(Timestamp, into = c("date", "time"), sep = " ") %>%
+  separate(time, into = c("h", "m"), sep = ":")
+salt.bl$time <- paste0(salt.bl$h, salt.bl$m)
+salt.bl[is.na(salt.bl)] <- NaN
+salt.bl <- salt.bl %>% 
+  select(plot.ID, year, yday, time, VPD_kPa, PAR, S1, S2, S3, S4, S5, S6, S7, S8)
 
 # Shore
 cat("Formatting shoreline data...")
-shore.bl <- right_join(met_wx, shore, by = "Timestamp")
-t.series.sh <-tibble(Timestamp = seq(from=as.POSIXct(first(shore.bl$Timestamp)),
-                                     to=as.POSIXct(last(shore.bl$Timestamp)),
-                                     by="30 min"))
-shore.bl <- left_join(t.series.sh, shore.bl, by = "Timestamp")
-  shore.bl$plot.ID <- rep(3, nrow(shore.bl))
-  shore.bl$year <- year(shore.bl$Timestamp)
-  shore.bl$yday <- yday(shore.bl$Timestamp)
-  shore.bl <- shore.bl %>%
-    separate(Timestamp, into = c("date", "time"), sep = " ") %>%
-    separate(time, into = c("h", "m"), sep = ":")
-  shore.bl$time <- paste0(shore.bl$h, shore.bl$m)
-  shore.bl[is.na(shore.bl)] <- NaN
-  shore.bl <- shore.bl %>% select(plot.ID, year, yday, time, VPD, PAR, Sh1, Sh2, Sh3, Sh4, Sh5, Sh6)
+shore.bl <- left_join(shore, wx_data, by = "Timestamp")
+t.series.l <-tibble(Timestamp = seq(from=as.POSIXct(first(shore$Timestamp)),
+                                    to=as.POSIXct(last(shore$Timestamp)),
+                                    by="30 min"))
+shore.bl <- left_join(t.series.l, shore.bl, by = "Timestamp")
+shore.bl$plot.ID <- rep(2, nrow(shore.bl))
+shore.bl$year <- year(shore.bl$Timestamp)
+shore.bl$yday <- yday(shore.bl$Timestamp)
+shore.bl <- shore.bl %>%
+  separate(Timestamp, into = c("date", "time"), sep = " ") %>%
+  separate(time, into = c("h", "m"), sep = ":")
+shore.bl$time <- paste0(shore.bl$h, shore.bl$m)
+shore.bl[is.na(shore.bl)] <- NaN
+shore.bl <- shore.bl %>% 
+  select(plot.ID, year, yday, time, VPD_kPa, PAR, L1, L2, L3, L4, L5, L6)
 
 # Save data as csv
 cat("Saving dataframes...")
