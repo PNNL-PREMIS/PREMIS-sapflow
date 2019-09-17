@@ -38,6 +38,11 @@ wx_BC <- tibble(Timestamp = ymd_hms(met_time$Timestamp),
                  VPD = ((100 - met_time$`RH, % (LGR S/N: 20418939, SEN S/N: 20411961)`) * es)/100)
 
 east.bl <- left_join(east, wx_BC, by = "Timestamp")
+t.series.east <-tibble(Timestamp = seq(from=as.POSIXct(first(east.bl$Timestamp)),
+                                       to=as.POSIXct(last(east.bl$Timestamp)),
+                                       by="30 min"))
+east.bl[is.na(east.bl)] <- NaN
+east.bl <- left_join(t.series.east, east.bl)
 east.bl <- tibble(Plot.ID = rep(1, nrow(east.bl)),
                                 Year = year(east.bl$Timestamp),
                                 DOY = yday(east.bl$Timestamp),
@@ -54,6 +59,12 @@ east.bl <- tibble(Plot.ID = rep(1, nrow(east.bl)),
                                 E8 = east.bl$E8)
 
 west.bl <- left_join(west, wx_BC, by = "Timestamp")
+t.series.west <-tibble(Timestamp = seq(from=as.POSIXct(first(west.bl$Timestamp)),
+                                       to=as.POSIXct(last(west.bl$Timestamp)),
+                                       by="30 min"))
+
+west.bl <- left_join(t.series.west, west.bl)
+west.bl[is.na(west.bl)] <- NaN
 west.bl <- tibble(Plot.ID = rep(2, nrow(west.bl)),
                   Year = year(west.bl$Timestamp),
                   DOY = yday(west.bl$Timestamp),
