@@ -1,0 +1,103 @@
+---
+title: "Sapflow Results"
+author: "SP"
+date: "September 18, 2019"
+output: html_document
+---
+
+```{r setup, echo = FALSE, message=FALSE, warning = FALSE}
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+
+read_csv("../SERC/baseliner_data/shoreline_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "L1", "L2", "L3", "L4", "L5", "L6")) %>% 
+  select(-VPD, -PAR, - Plot.ID) %>% 
+  gather("Tree", "K", L1:L6) -> shoreline
+
+read_csv("../SERC/baseliner_data/freshwater_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")) %>% 
+  select(-VPD, -PAR, - Plot.ID) %>% 
+  gather("Tree", "K", F1:F8) -> freshwater
+
+read_csv("../SERC/baseliner_data/seawater_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8")) %>% 
+  select(-VPD, -PAR, - Plot.ID) %>% 
+  gather("Tree", "K", S1:S8) -> seawater
+
+read_csv("../SERC/baseliner_data/control_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
+  select(-VPD, -PAR, - Plot.ID) %>% 
+  gather("Tree", "K", C1:C8) -> control
+
+```
+
+```{r plot functions, echo = FALSE}
+
+doy <- function(timeseries){
+  timeseries %>%
+  group_by(DOY, Tree) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
+  ggplot(aes(x = DOY, y = meanK)) + 
+  geom_point(aes(color = Tree), alpha = 0.5) + 
+  facet_wrap(~Tree) + 
+  geom_smooth(color = "black") + 
+  ylab("Kest") +
+  xlab("Day of Year")
+}
+
+tod <- function(timeseries) {
+  timeseries %>%
+  group_by(Time, Tree) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>%
+  ggplot(aes(x = Time, y = meanK)) + 
+  geom_line(aes(color = Tree), size = 1.5) +
+  ylab("Kest") + 
+  xlab("Time of Day")
+}
+
+hist <- function(timeseries) {
+  timeseries %>% 
+  ggplot(aes(DOY)) +
+  geom_histogram(binwidth = 30) +
+  facet_wrap(~Tree)
+}
+
+```
+
+
+
+## total data points for all shoreline trees n = `r nrows(shoreline)`
+```{r basic stats, echo = FALSE, message=FALSE}
+
+
+```
+
+```{r, echo = TRUE, message = FALSE, warning = FALSE}
+
+control %>% group_by(Time) %>% 
+  summarise(Control = mean(K, na.rm = TRUE)) -> control_timeavg
+
+seawater %>% group_by(Time) %>% 
+  summarise(Seawater = mean(K, na.rm = TRUE)) -> seawater_timeavg
+
+freshwater %>% group_by(Time) %>% 
+  summarise(Freshwater = mean(K, na.rm = TRUE)) -> freshwater_timeavg
+
+shoreline %>% group_by(Time) %>% 
+  summarise(Shoreline = mean(K, na.rm = TRUE)) -> shoreline_timeavg
+
+time_averages <- tibble(Time = shoreline_timeavg$Time,
+                        Freshwater = freshwater_timeavg$Freshwater,
+                        Shoreline = shoreline_timeavg$Shoreline,
+                        Seawater = seawater_timeavg$Seawater,
+                        Control = control_timeavg$Control)
+time_averages %>% 
+  gather("Plot", "Kest", Freshwater:Control) %>% 
+  ggplot(aes(x = Time, y = Kest, group = Plot, color = Plot)) + 
+  geom_line(size = 1.5) 
+
+
+```
+
+## Shoreline sapflow by time of day
+```{r HOD, echo = TRUE, massage = FALSE}
+
+```
