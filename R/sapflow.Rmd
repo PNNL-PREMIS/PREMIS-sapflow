@@ -11,21 +11,34 @@ library(tidyr)
 library(dplyr)
 library(ggplot2)
 
+inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv")
+
 read_csv("../SERC/baseliner_data/shoreline_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "L1", "L2", "L3", "L4", "L5", "L6")) %>% 
   select(-VPD, -PAR, - Plot.ID) %>% 
-  gather("Tree", "K", L1:L6) -> shoreline
+  gather("Tree", "K", L1:L6) %>% 
+  mutate(Species_code = "ACRU", Plot = "Shoreline") -> shoreline
 
 read_csv("../SERC/baseliner_data/freshwater_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")) %>% 
   select(-VPD, -PAR, - Plot.ID) %>% 
-  gather("Tree", "K", F1:F8) -> freshwater
+  gather("Tree", "K", F1:F8) %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  select(DOY, Time, Tree, K, Species_code, Plot) -> freshwater
 
 read_csv("../SERC/baseliner_data/seawater_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8")) %>% 
   select(-VPD, -PAR, - Plot.ID) %>% 
-  gather("Tree", "K", S1:S8) -> seawater
+  gather("Tree", "K", S1:S8) %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  select(DOY, Time, Tree, K, Species_code, Plot) -> seawater
 
 read_csv("../SERC/baseliner_data/control_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
   select(-VPD, -PAR, - Plot.ID) %>% 
-  gather("Tree", "K", C1:C8) -> control
+  gather("Tree", "K", C1:C8) %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  select(DOY, Time, Tree, K, Species_code, Plot) -> control
+
+sapflow <- rbind(seawater, freshwater, shoreline, control)
+
+sapflow %>% mutate(Elevation = if_else(grepl("^L", Tree), "Shoreline", "Upland")) -> sapflow
 
 ```
 
@@ -62,42 +75,64 @@ hist <- function(timeseries) {
 
 ```
 
+## Summary plots
 
+### ...by species and plot - time of day
+```{r, echo = FALSE, massage = FALSE}
 
-## total data points for all shoreline trees n = `r nrows(shoreline)`
-```{r basic stats, echo = FALSE, message=FALSE}
-
-
-```
-
-```{r, echo = TRUE, message = FALSE, warning = FALSE}
-
-control %>% group_by(Time) %>% 
-  summarise(Control = mean(K, na.rm = TRUE)) -> control_timeavg
-
-seawater %>% group_by(Time) %>% 
-  summarise(Seawater = mean(K, na.rm = TRUE)) -> seawater_timeavg
-
-freshwater %>% group_by(Time) %>% 
-  summarise(Freshwater = mean(K, na.rm = TRUE)) -> freshwater_timeavg
-
-shoreline %>% group_by(Time) %>% 
-  summarise(Shoreline = mean(K, na.rm = TRUE)) -> shoreline_timeavg
-
-time_averages <- tibble(Time = shoreline_timeavg$Time,
-                        Freshwater = freshwater_timeavg$Freshwater,
-                        Shoreline = shoreline_timeavg$Shoreline,
-                        Seawater = seawater_timeavg$Seawater,
-                        Control = control_timeavg$Control)
-time_averages %>% 
-  gather("Plot", "Kest", Freshwater:Control) %>% 
-  ggplot(aes(x = Time, y = Kest, group = Plot, color = Plot)) + 
-  geom_line(size = 1.5) 
-
+sapflow %>% 
+  group_by(Elevation, Time, Species_code, Plot) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
+  ggplot(aes(x = Time, y = meanK, color = Species_code)) + 
+  geom_line(size = 1) + 
+  facet_grid(~Plot)
 
 ```
 
-## Shoreline sapflow by time of day
-```{r HOD, echo = TRUE, massage = FALSE}
+### ...by species and plot - day of year
+```{r, echo = FALSE, message = FALSE}
+
+sapflow %>% 
+  group_by(Elevation, DOY, Species_code, Plot) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
+  ggplot(aes(x = DOY, y = meanK, color = Species_code)) + 
+  geom_smooth() + 
+  facet_grid(~Plot)
+
+```
+
+### ...Red Maple by elevation - time of day
+```{r, echo = FALSE, message = FALSE}
+
+sapflow %>% 
+  filter(Species_code == "ACRU") %>%
+  group_by(Elevation, Time, Species_code) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), sdK = sd(K, na.rm = TRUE)) %>% 
+  ggplot(aes(x = Time, y = meanK)) +
+  geom_line(aes(color = Elevation), size = 1.5) +
+# geom_errorbar(aes(ymin = meanK - sdK, ymax = meanK + sdK)) +
+  ggtitle("Mean K for Maples at SERC") + 
+  ylab("K")
+
+```
+
+### ...plot mean by time of day
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+sapflow %>% group_by(Time, Plot) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), sdK = sd(K, na.rm = TRUE)) %>% 
+  ggplot(aes(x = Time, y = meanK, color = Plot)) + 
+  geom_line(size = 1.5)
+# geom_errorbar(aes(ymin = meanK - sdK, ymax = meanK + sdK))
+
+```
+
+### ...plot mean by time of day
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+sapflow %>% group_by(DOY, Plot) %>% 
+  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
+  ggplot(aes(x = DOY, y = meanK, color = Plot)) + 
+  geom_smooth()
 
 ```
