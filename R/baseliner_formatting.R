@@ -42,7 +42,8 @@ list.files("../SERC/met_data/TRH/", full.names = TRUE) %>%
   select(Timestamp, RH, Temp) -> TRH
 
 left_join(PAR, TRH) %>% 
-  mutate(es = (0.6108 *exp((17.27 * Temp)/(273.3 + Temp))), VPD_kPa = ((100 - RH) * es)/100) -> wx_data
+  mutate(es = (0.6108 *exp((17.27 * Temp)/(273.3 + Temp))), 
+         VPD_kPa = ((100 - RH) * es)/100) -> wx_data
 
 # Create 30 minute averages
 # cat("Creating 30 minute averages...")
