@@ -1,40 +1,76 @@
 ---
-title: "Sapflow Results"
-author: "SP"
-date: "September 18, 2019"
+title: "SERC Sapflow Results"
+author: "SPennington"
+date: "October 1, 2019"
 output: html_document
 ---
+
+### Data is from May 10, 2018 - August 29, 2019
 
 ```{r setup, echo = FALSE, message=FALSE, warning = FALSE}
 library(readr)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+library(lubridate)
 
 inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv")
 
-read_csv("../SERC/baseliner_data/shoreline_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "L1", "L2", "L3", "L4", "L5", "L6")) %>% 
-  select(-VPD, -PAR, - Plot.ID) %>% 
-  gather("Tree", "K", L1:L6) %>% 
-  mutate(Species_code = "ACRU", Plot = "Shoreline") -> shoreline
+read_csv("../SERC/baseliner_data/shoreline_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "L1", "L2", "L3", "L4", "L5", "L6")) %>% 
+  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
+  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
+  separate(Time, c("Hour", "Min"), sep = -2) -> shoreline_hm
 
-read_csv("../SERC/baseliner_data/freshwater_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")) %>% 
-  select(-VPD, -PAR, - Plot.ID) %>% 
+shoreline_hm$Hour[shoreline_hm$Hour == ""] <- 0
+
+shoreline_hm %>% 
+  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
+  select(-Y, -Year, - Day, - Month) %>% 
+  gather("Tree", "K", L1:L6) %>% 
+  mutate(Species_code = "ACRU", Plot = "Shoreline") %>% 
+  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> shoreline
+
+read_csv("../SERC/baseliner_data/freshwater_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")) %>% 
+  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
+  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
+  separate(Time, c("Hour", "Min"), sep = -2) -> freshwater_hm
+
+freshwater_hm$Hour[freshwater_hm$Hour == ""] <- 0
+
+freshwater_hm %>% 
+  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
+  select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", F1:F8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
-  select(DOY, Time, Tree, K, Species_code, Plot) -> freshwater
+  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> freshwater
 
-read_csv("../SERC/baseliner_data/seawater_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8")) %>% 
-  select(-VPD, -PAR, - Plot.ID) %>% 
+read_csv("../SERC/baseliner_data/seawater_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8")) %>% 
+  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
+  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
+  separate(Time, c("Hour", "Min"), sep = -2) -> seawater_hm
+
+seawater_hm$Hour[seawater_hm$Hour == ""] <- 0
+
+seawater_hm %>% 
+  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
+  select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", S1:S8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
-  select(DOY, Time, Tree, K, Species_code, Plot) -> seawater
+  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> seawater
 
-read_csv("../SERC/baseliner_data/control_Kest.csv", col_names = c("Plot.ID", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
-  select(-VPD, -PAR, - Plot.ID) %>% 
+read_csv("../SERC/baseliner_data/control_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
+  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
+  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
+  separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
+  
+control_hm$Hour[control_hm$Hour == ""] <- 0
+
+control_hm %>% 
+  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
+  select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
-  select(DOY, Time, Tree, K, Species_code, Plot) -> control
+  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control
 
 sapflow <- rbind(seawater, freshwater, shoreline, control)
 
@@ -75,64 +111,139 @@ hist <- function(timeseries) {
 
 ```
 
-## Summary plots
 
-### ...by species and plot - time of day
+#### Figure 1 | Mean K for hour of day by species and plot
 ```{r, echo = FALSE, massage = FALSE}
 
 sapflow %>% 
-  group_by(Elevation, Time, Species_code, Plot) %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Elevation, Hour, Species_code, Plot) %>% 
   summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
-  ggplot(aes(x = Time, y = meanK, color = Species_code)) + 
+  ggplot(aes(x = Hour, y = meanK, color = Species_code)) + 
   geom_line(size = 1) + 
   facet_grid(~Plot)
 
 ```
 
-### ...by species and plot - day of year
 ```{r, echo = FALSE, message = FALSE}
 
-sapflow %>% 
-  group_by(Elevation, DOY, Species_code, Plot) %>% 
-  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
-  ggplot(aes(x = DOY, y = meanK, color = Species_code)) + 
-  geom_smooth() + 
-  facet_grid(~Plot)
+### ...by species and plot - day of year
+# sapflow %>% 
+#   group_by(Elevation, DOY, Species_code, Plot) %>% 
+#   summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
+#   ggplot(aes(x = DOY, y = meanK, color = Species_code)) + 
+#   geom_smooth() + 
+#   facet_grid(~Plot)
 
 ```
 
-### ...Red Maple by elevation - time of day
+#### Figure 2 | Mean K of Red Maples by hour of day
 ```{r, echo = FALSE, message = FALSE}
 
 sapflow %>% 
   filter(Species_code == "ACRU") %>%
-  group_by(Elevation, Time, Species_code) %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Elevation, Hour, Species_code) %>% 
   summarise(meanK = mean(K, na.rm = TRUE), sdK = sd(K, na.rm = TRUE)) %>% 
-  ggplot(aes(x = Time, y = meanK)) +
+  ggplot(aes(x = Hour, y = meanK)) +
   geom_line(aes(color = Elevation), size = 1.5) +
 # geom_errorbar(aes(ymin = meanK - sdK, ymax = meanK + sdK)) +
-  ggtitle("Mean K for Maples at SERC") + 
   ylab("K")
 
 ```
 
-### ...plot mean by time of day
-```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#### Figure 3 | Shoreline plot timeseries, total and June 2019
+```{r shoreline_t, echo = FALSE, message = FALSE, warning = FALSE}
 
-sapflow %>% group_by(Time, Plot) %>% 
-  summarise(meanK = mean(K, na.rm = TRUE), sdK = sd(K, na.rm = TRUE)) %>% 
-  ggplot(aes(x = Time, y = meanK, color = Plot)) + 
-  geom_line(size = 1.5)
-# geom_errorbar(aes(ymin = meanK - sdK, ymax = meanK + sdK))
+shoreline %>% 
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.7) +
+  ggtitle("Tree")
+
+shoreline %>% 
+  filter(Timestamp > "2019-06-01", Timestamp < "2019-07-01") %>%
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.8) +
+  ggtitle("June 2019")
 
 ```
 
-### ...plot mean by time of day
+#### Figure 4 | Freshwater plot timeseries, total and June 2019
+```{r freshwater_t, echo = FALSE, message = FALSE, warning = FALSE}
+freshwater %>% 
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 1) +
+  ggtitle("Tree")
+
+freshwater %>% 
+  filter(Timestamp > "2019-06-01", Timestamp < "2019-07-01") %>%
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.8) +
+  ggtitle("June 2019")
+
+```
+
+#### Figure 5 | Seawater plot timeseries, total and June 2019
+```{r seawater_t, echo = FALSE, message = FALSE, warning = FALSE}
+seawater %>% 
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.7) +
+  ggtitle("Tree")
+
+seawater %>% 
+  filter(Timestamp > "2019-06-01", Timestamp < "2019-07-01") %>%
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.8) +
+  ggtitle("June 2019")
+
+```
+
+#### Figure 6 | Control plot timeseries, total and June 2019
+```{r control_t, echo = FALSE, message = FALSE, warning = FALSE}
+control %>% 
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.8) +
+  ggtitle("Tree")
+
+control %>% 
+  filter(Timestamp > "2019-06-01", Timestamp < "2019-07-01") %>%
+  ggplot(aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, ncol = 2) +
+  ylim(-0.1, 0.8) +
+  ggtitle("June 2019")
+```
+
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
 
-sapflow %>% group_by(DOY, Plot) %>% 
-  summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
-  ggplot(aes(x = DOY, y = meanK, color = Plot)) + 
-  geom_smooth()
+# sapflow %>% group_by(Time, Plot) %>% 
+#   summarise(meanK = mean(K, na.rm = TRUE), sdK = sd(K, na.rm = TRUE)) %>% 
+#   ggplot(aes(x = Time, y = meanK, color = Plot)) + 
+#   geom_line(size = 1.5)
+# # geom_errorbar(aes(ymin = meanK - sdK, ymax = meanK + sdK))
+
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+# sapflow %>% group_by(DOY, Plot) %>% 
+#   summarise(meanK = mean(K, na.rm = TRUE), n = n()) %>% 
+#   ggplot(aes(x = DOY, y = meanK, color = Plot)) + 
+#   geom_smooth()
 
 ```
