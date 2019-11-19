@@ -30,10 +30,10 @@ east_time <- east %>%
 east_time$time <- paste0(east_time$h, east_time$m)
 east_time$Timestamp <- as.POSIXct(paste0(east_time$Date, " ", east_time$h,":", east_time$m, ":00"))
 
-wx_BC <- tibble(Timestamp = ymd_hms(met_time$Timestamp),
-                 PAR = met_time$`PAR, µmol/m²/s (LGR S/N: 20418939, SEN S/N: 20419083)` * 0.327,
-                 es = (0.6108 * exp((17.27 * met_time$`Temp, °C (LGR S/N: 20418939, SEN S/N: 20411961)`)/(273.3 +  met_time$`Temp, °C (LGR S/N: 20418939, SEN S/N: 20411961)`)))/10,
-                 VPD = ((100 - met_time$`RH, % (LGR S/N: 20418939, SEN S/N: 20411961)`) * es)/100)
+wx_BC <- tibble(Timestamp = ymd_hms(met_BC$Timestamp),
+                 PAR = met_BC$`PAR, µmol/m²/s (LGR S/N: 20418939, SEN S/N: 20419083)`,
+                 es = (0.6108 * exp((17.27 * met_BC$`Temp, °C (LGR S/N: 20418939, SEN S/N: 20411961)`)/(273.3 +  met_BC$`Temp, °C (LGR S/N: 20418939, SEN S/N: 20411961)`)))/10,
+                 VPD = ((100 - met_BC$`RH, % (LGR S/N: 20418939, SEN S/N: 20411961)`) * es)/100)
 
 t.series.east <-tibble(Timestamp = seq(from=as.POSIXct(first(east$Timestamp)),
                                        to=as.POSIXct(last(east$Timestamp)),
@@ -64,7 +64,6 @@ west_time <- west %>%
   separate(time, into = c("h", "m"), sep = ":")
 west_time$time <- paste0(west_time$h, west_time$m)
 west_time$Timestamp <- as.POSIXct(paste0(west_time$Date, " ", west_time$h,":", west_time$m, ":00"))
-
 
 t.series.west <-tibble(Timestamp = seq(from=as.POSIXct(first(west$Timestamp)),
                                        to=as.POSIXct(last(west$Timestamp)),
