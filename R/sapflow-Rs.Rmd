@@ -6,5 +6,59 @@ output: html_document
 ---
 
 ##Prelim plots to make:
-* daily cycle of sapflow using hour of day on x axis
+* figure out how to calculate Js
+* table with no of datapoints
+* available time periods
+* need table with Js, table with Rs, climate data
+* then add all to one dataframe on common time frame
+* TOD facet by month, Js/Rs lines
+
+```{r functions}
+# Load functions
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r load-data}
+# Load in Rs, K, weather, and inventory data
+inventory <- read_csv("../../PREMIS-seawater/inventory/ss-inventory.csv")
+ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
+
+read_csv("../SERC/baseliner_data/control_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
+  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
+  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
+  separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
+  
+control_hm$Hour[control_hm$Hour == ""] <- 0
+
+control_hm %>% 
+  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
+  select(-Y, -Year, - Day, - Month) %>% 
+  gather("Tree", "K", C1:C8) %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
+
+read_csv("../SERC/con_licor_data_20191120.csv") %>%
+  left_join(ports_lt, by = "Port") -> rs_long
+
+##need to load in weather data
+
+```
+
+
+``` {r data-cleaning}
+# Next, we need to filter for the Js trees that also have Rs measurements
+control_long %>% 
+
+# Then, we need to round the timestamp to the nearest hour and take hourly averages
+
+
+# Now that all data are on a common timeframe, we can merge them into one dataset for analysis
+
+```
+
+
 
