@@ -13,16 +13,18 @@ output: html_document
 * then add all to one dataframe on common time frame
 * TOD facet by month, Js/Rs lines
 
-```{r functions}
+```{r functions, echo = FALSE, message = FALSE}
 # Load functions
 library(readr)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
 library(lubridate)
+library(viridis)
+
 ```
 
-```{r load-data}
+```{r load-data, echo = FALSE, message = FALSE}
 # Load in Rs, K, weather, and inventory data
 inventory <- read_csv("../../PREMIS-seawater/inventory/ss-inventory.csv")
 ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
@@ -48,16 +50,67 @@ read_csv("../SERC/con_licor_data_20191120.csv") %>%
 
 ```
 
-
-``` {r data-cleaning}
+```{r data-cleaning, echo = FALSE, message = FALSE}
 # Next, we need to filter for the Js trees that also have Rs measurements
+rs_trees <- unique(ports_lt$Tree)
+
 control_long %>% 
+  filter(Tree %in% rs_trees) %>% 
+  # Then, we need to round the timestamp to the nearest hour and take hourly averages
+  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
+  # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
+  group_by(Timestamp, Tree) %>% 
+  summarise(K_avg = mean(K)) -> control_filter
 
-# Then, we need to round the timestamp to the nearest hour and take hourly averages
+control_filter %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Hour, Tree) %>% 
+  summarise(K_havg = mean(K_avg, na.rm = TRUE)) -> control_havg
 
+rs_long %>% 
+  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
+  group_by(Timestamp, Tree) %>% 
+  summarise(rs_avg = mean(Flux)) -> rs_filter
 
-# Now that all data are on a common timeframe, we can merge them into one dataset for analysis
+rs_filter %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Hour, Tree) %>% 
+  summarise(rs_havg = mean(rs_avg, na.rm = TRUE)) -> rs_havg
+
+left_join(rs_havg, control_havg) -> hourly
+
+gather(hourly, key = "Type", value = "Value", rs_havg:K_havg) -> hourly_long
+
+left_join(control_filter, rs_filter) -> combined
+  
+```
+
+```{r hour-of-day}
+ggplot(hourly_long, aes(x = Hour, Value)) +
+  geom_point(aes(color = Type), size = 1) +
+  scale_color_viridis(discrete = TRUE, 
+                      option = "D", 
+                      begin =0, 
+                      end = 0.5,
+                      labels = c("Js", "Rs")) +
+  labs(title = "Value by hour of day", x = "Hour of Day", y = "Value") +
+  facet_wrap(~Tree) + 
+  theme_bw()
+  
+```
+
+```{r rs-js}
+ggplot(hourly, aes(x = K_havg, rs_havg)) +
+  geom_point(aes(color = Hour)) +
+  scale_color_viridis(discrete = FALSE) +
+  labs(x = "Js", y = "Rs") +
+  theme_bw()
 
 ```
+
+
+Number of Js obs: `r sum(complete.cases(combined$K_avg))`
+
+Number of Rs obs: `r sum(complete.cases(combined$rs_avg))`
 
 
