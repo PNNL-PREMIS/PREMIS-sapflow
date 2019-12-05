@@ -28,6 +28,7 @@ library(viridis)
 # Load in Rs, K, weather, and inventory data
 inventory <- read_csv("../../PREMIS-seawater/inventory/ss-inventory.csv")
 ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
+species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv")
 
 read_csv("../SERC/baseliner_data/control_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
@@ -44,7 +45,8 @@ control_hm %>%
   select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
 
 read_csv("../SERC/con_licor_data_20191120.csv") %>%
-  left_join(ports_lt, by = "Port") -> rs_long
+  left_join(ports_lt, by = "Port") %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
 ##need to load in weather data
 
@@ -53,64 +55,91 @@ read_csv("../SERC/con_licor_data_20191120.csv") %>%
 ```{r data-cleaning, echo = FALSE, message = FALSE}
 # Next, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
+sunrise <- 6
+sunset <- 19
 
 control_long %>% 
+  #Then, we need to transform K to Js (sapflux density) through a conversion
+  mutate(Js = 119* 10^(-4) * K^(1.231)) %>% 
   filter(Tree %in% rs_trees) %>% 
   # Then, we need to round the timestamp to the nearest hour and take hourly averages
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
-  group_by(Timestamp, Tree) %>% 
-  summarise(K_avg = mean(K)) -> control_filter
+  group_by(Timestamp, Tree, Species_code) %>% 
+  summarise(Js_avg = mean(Js)) -> control_filter
 
 control_filter %>% 
   mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Tree) %>% 
-  summarise(K_havg = mean(K_avg, na.rm = TRUE)) -> control_havg
+  group_by(Hour, Species_code) %>% 
+  summarise(Js_havg = mean(Js_avg, na.rm = TRUE)) -> control_havg
 
 rs_long %>% 
+  filter(Flux > 0, Flux < 25) %>% 
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
-  group_by(Timestamp, Tree) %>% 
+  group_by(Timestamp, Species_code) %>% 
   summarise(rs_avg = mean(Flux)) -> rs_filter
 
 rs_filter %>% 
   mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Tree) %>% 
+  group_by(Hour, Species_code) %>% 
   summarise(rs_havg = mean(rs_avg, na.rm = TRUE)) -> rs_havg
 
-left_join(rs_havg, control_havg) -> hourly
+left_join(rs_havg, control_havg)  %>% 
+  mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
+  left_join(species_codes)-> hourly
 
-gather(hourly, key = "Type", value = "Value", rs_havg:K_havg) -> hourly_long
+gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
 
 left_join(control_filter, rs_filter) -> combined
   
 ```
 
 ```{r hour-of-day}
-ggplot(hourly_long, aes(x = Hour, Value)) +
-  geom_point(aes(color = Type), size = 1) +
+rs_min <- 4
+rs_max <- 6
+hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
+
+hourly_long %>% 
+  ungroup %>% 
+  filter(Type == "Js_havg") %>% 
+  select(-Value) %>% 
+  mutate(Value  = (rs_max - rs_min) * ((x$Value - min(x$Value))/(max(x$Value) - min(x$Value))) + rs_min) -> hourly_check
+
+hourly_long %>% 
+  filter(Type == "rs_havg") %>% 
+  bind_rows(hourly_check) -> hourly_norm
+
+ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)) +
+  geom_line() +
+  geom_point(size = 1) +
   scale_color_viridis(discrete = TRUE, 
                       option = "D", 
-                      begin =0, 
-                      end = 0.5,
+                      begin =0.7, 
+                      end = 0.4,
                       labels = c("Js", "Rs")) +
-  labs(title = "Value by hour of day", x = "Hour of Day", y = "Value") +
-  facet_wrap(~Tree) + 
-  theme_bw()
+  labs(x = "Hour of Day", y = "Value") +
+  facet_wrap(~Species) + 
+  theme_minimal() +
+  theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
   
 ```
 
 ```{r rs-js}
-ggplot(hourly, aes(x = K_havg, rs_havg)) +
-  geom_point(aes(color = Hour)) +
-  scale_color_viridis(discrete = FALSE) +
-  labs(x = "Js", y = "Rs") +
-  theme_bw()
-
+ggplot(hourly, aes(x = Js_havg, rs_havg)) +
+  geom_point(aes(color = Daytime)) +
+  geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
+  scale_color_viridis(discrete = TRUE,
+                      name = "Time of Day",
+                      labels = c("Nighttime", "Daytime")) +
+  scale_fill_viridis(discrete = TRUE,
+                     name = "Time of Day",
+                     labels = c("Nighttime", "Daytime")) +
+  labs(x = "Js (cm/s)", y = "Rs (umol/m/s)") +
+  theme_minimal()
 ```
 
 
-Number of Js obs: `r sum(complete.cases(combined$K_avg))`
-
+Number of Js obs: `r sum(complete.cases(combined$Js_avg))`
 Number of Rs obs: `r sum(complete.cases(combined$rs_avg))`
 
 
