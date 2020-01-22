@@ -26,11 +26,12 @@ library(viridis)
 
 ```{r load-data, echo = FALSE, message = FALSE}
 # Load in Rs, K, weather, and inventory data
-inventory <- read_csv("../../PREMIS-seawater/inventory/ss-inventory.csv")
+inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv")
 ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
 species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv")
 
-read_csv("../SERC/baseliner_data/control_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
+read_csv("../SERC/baseliner_data/control_Kest_yr.csv", 
+         col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
   separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
   separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
@@ -48,7 +49,17 @@ read_csv("../SERC/con_licor_data_20191120.csv") %>%
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
-##need to load in weather data
+# Load weather data
+read_csv("../SERC/met_data/SECPRE_30min.csv") %>% 
+  mutate(Timestamp = ymd_hms(endDateTime)) %>% 
+  rename(Precip = secPrecipBulk) %>% 
+  select(Timestamp, Precip) -> precip
+
+read_csv("../SERC/met_data/RH_30min.csv") %>% 
+  mutate(Timestamp = ymd_hms(endDateTime)) %>% 
+  rename(RH = RHMean, Temp = tempRHMean) %>% 
+  select(Timestamp, RH, Temp) %>% 
+  left_join(precip, by = "Timestamp") -> wx_dat
 
 ```
 
@@ -68,35 +79,31 @@ control_long %>%
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js)) -> control_filter
 
-control_filter %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Species_code) %>% 
-  summarise(Js_havg = mean(Js_avg, na.rm = TRUE)) -> control_havg
-
-rs_long %>% 
-  filter(Flux > 0, Flux < 25) %>% 
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
-  group_by(Timestamp, Species_code) %>% 
+rs_long %>%
+  filter(Flux > 0, Flux < 25) %>%
+  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
+  group_by(Timestamp, Species_code) %>%
   summarise(rs_avg = mean(Flux)) -> rs_filter
 
-rs_filter %>% 
+control_filter %>% 
+  left_join(rs_filter) %>% 
+  na.omit() %>% 
+  semi_join(wx_dat) -> combined
+
+combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
   group_by(Hour, Species_code) %>% 
-  summarise(rs_havg = mean(rs_avg, na.rm = TRUE)) -> rs_havg
-
-left_join(rs_havg, control_havg)  %>% 
+  summarise(rs_havg = mean(rs_avg), Js_havg = mean(Js_avg)) %>% 
   mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
-  left_join(species_codes)-> hourly
+  left_join(species_codes) -> hourly
 
 gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
 
-left_join(control_filter, rs_filter) -> combined
-  
 ```
 
 ```{r hour-of-day}
-rs_min <- 4
-rs_max <- 6
+rs_min <- 7
+rs_max <- 11
 hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
 
 hourly_long %>% 
@@ -139,7 +146,7 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
 ```
 
 
-Number of Js obs: `r sum(complete.cases(combined$Js_avg))`
-Number of Rs obs: `r sum(complete.cases(combined$rs_avg))`
+Number of Js obs: `r nrow(combined)`
+Number of Rs obs: `r nrow(combined)`
 
 
