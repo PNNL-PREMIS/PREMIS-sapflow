@@ -5,13 +5,13 @@ date: "9/10/2019"
 output: html_document
 ---
 
-##Prelim plots to make:
-* figure out how to calculate Js
-* table with no of datapoints
-* available time periods
-* need table with Js, table with Rs, climate data
-* then add all to one dataframe on common time frame
-* TOD facet by month, Js/Rs lines
+## Prelim plots to make:
+- figure out how to calculate Js
+- table with no of datapoints
+- available time periods
+- need table with Js, table with Rs, climate data
+- then add all to one dataframe on common time frame
+- TOD facet by month, Js/Rs lines
 
 ```{r functions, echo = FALSE, message = FALSE}
 # Load functions
@@ -56,10 +56,18 @@ read_csv("../SERC/met_data/SECPRE_30min.csv") %>%
   select(Timestamp, Precip) -> precip
 
 read_csv("../SERC/met_data/RH_30min.csv") %>% 
+  filter(horizontalPosition == "000", verticalPosition == "060") %>% 
   mutate(Timestamp = ymd_hms(endDateTime)) %>% 
-  rename(RH = RHMean, Temp = tempRHMean) %>% 
-  select(Timestamp, RH, Temp) %>% 
-  left_join(precip, by = "Timestamp") -> wx_dat
+  rename(RH = RHMean, Tair = tempRHMean) %>% 
+  select(Timestamp, RH, Tair) -> temprh
+
+read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
+  mutate(Timestamp = ymd_hms(endDateTime)) %>% 
+  rename(PAR = PARMean) %>% 
+  filter(verticalPosition == "060") %>% 
+  select(Timestamp, PAR) %>%
+  left_join(precip, by = "Timestamp") %>% 
+  left_join(temprh, by = "Timestamp") -> wx_dat
 
 ```
 
@@ -80,15 +88,17 @@ control_long %>%
   summarise(Js_avg = mean(Js)) -> control_filter
 
 rs_long %>%
-  filter(Flux > 0, Flux < 25) %>%
+  filter(Flux > 0, Flux < 25, SMoist > 0) %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
-  group_by(Timestamp, Species_code) %>%
-  summarise(rs_avg = mean(Flux)) -> rs_filter
+  group_by(Timestamp, Tree, Species_code) %>%
+  summarise(rs_avg = mean(Flux), T5 = mean(T5), SM = mean(SMoist)) %>% 
+  ungroup() -> rs_filter
 
 control_filter %>% 
   left_join(rs_filter) %>% 
+  mutate(DOY = yday(Timestamp)) %>% 
   na.omit() %>% 
-  semi_join(wx_dat) -> combined
+  left_join(wx_dat) -> combined
 
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
