@@ -62,12 +62,16 @@ read_csv("../SERC/met_data/RH_30min.csv") %>%
   select(Timestamp, RH, Tair) -> temprh
 
 read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime)) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime), DOY = yday(Timestamp)) %>% 
   rename(PAR = PARMean) %>% 
   filter(verticalPosition == "060") %>% 
-  select(Timestamp, PAR) %>%
+  select(Timestamp, DOY, PAR) %>%
   left_join(precip, by = "Timestamp") %>% 
-  left_join(temprh, by = "Timestamp") -> wx_dat
+  left_join(temprh, by = "Timestamp") %>% 
+  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
+  group_by(Timestamp) %>% 
+  summarise(DOY = mean(DOY), PAR = mean(PAR), 
+            Precip = mean(Precip), RH = mean(RH), Tair = mean(Tair)) -> wx_dat
 
 ```
 
@@ -96,18 +100,26 @@ rs_long %>%
 
 control_filter %>% 
   left_join(rs_filter) %>% 
-  mutate(DOY = yday(Timestamp)) %>% 
   na.omit() %>% 
-  left_join(wx_dat) -> combined
+  left_join(wx_dat, by = "Timestamp") %>% 
+  mutate(DOY = yday(Timestamp)) -> combined
 
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
   group_by(Hour, Species_code) %>% 
-  summarise(rs_havg = mean(rs_avg), Js_havg = mean(Js_avg)) %>% 
+  summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), Precip = mean(Precip, na.rm = TRUE), 
+            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE)) %>% 
   mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
   left_join(species_codes) -> hourly
 
 gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
+
+combined %>% 
+  mutate(Date = date(Timestamp)) %>% 
+  group_by(Date) %>% 
+  summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), 
+            DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
+            Precip = mean(Precip, na.rm = TRUE), RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE)) -> daily
 
 ```
 
