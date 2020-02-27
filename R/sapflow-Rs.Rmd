@@ -119,7 +119,9 @@ combined %>%
   group_by(Date) %>% 
   summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), 
             DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
-            Precip = mean(Precip, na.rm = TRUE), RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE)) -> daily
+            Precip = mean(Precip, na.rm = TRUE), RH = mean(RH, na.rm = TRUE), 
+            Tair = mean(Tair, na.rm = TRUE), SM = mean(SM, na.rm = TRUE), 
+            T5 = mean(T5, na.rm = TRUE)) -> daily
 
 ```
 
