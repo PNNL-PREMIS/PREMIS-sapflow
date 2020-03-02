@@ -15,6 +15,10 @@ similar_days <- function(day_of_year, climate_data, lookahead, constraints) {
   # Note this function will need to handle edge cases, when doy is close
   # to the beginning or end of the time series
   
+  if(sum(constraints < 0) > 0) {
+    stop("Constrains must be positive")
+  }
+  
   if(!day_of_year %in% climate_data$DOY) {
     stop("Day of year not found in dataset")
   }
@@ -98,3 +102,8 @@ expect_equal(x, c(102, 103))
 con <- c("x" = 1, "y" = 2)
 x <- similar_days(clim, day_of_year = 101, lookahead = nrow(clim), constraints = con)
 expect_equal(x, c(103, 104))
+
+# Constrains must be positive
+con <- c("x" = 1, "y" = -2)
+expect_error(similar_days(clim, day_of_year = 104, lookahead = 2, constraints = con),
+             regexp = "Constrains must be positive")
