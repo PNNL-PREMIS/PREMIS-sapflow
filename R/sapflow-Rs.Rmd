@@ -5,13 +5,20 @@ date: "9/10/2019"
 output: html_document
 ---
 
-## Prelim plots to make:
-- figure out how to calculate Js
-- table with no of datapoints
-- available time periods
-- need table with Js, table with Rs, climate data
-- then add all to one dataframe on common time frame
-- TOD facet by month, Js/Rs lines
+**Title:** (From AGU) Using continuous sap flux and soil respiration datasets to infer the strength and speed of root-soil coupling in a deciduous forest
+
+**Authors:** Stephanie C. Pennington, Ben Bond-Lamberty, Charlotte Grossiord, Wenzhi Wang, Nate McDowell
+
+**Target Journal:**
+
+**Primary Objective:** Understand the mechanisms that drive root-soil coupling to investigate midday depression of Rs
+
+**Research Questions:** 
+
+1. What is causing/driving this midday depression in Rs?
+2. How are Rs and Js coupled in time and space?
+
+## Preliminary Figures and Takeaway:
 
 ```{r functions, echo = FALSE, message = FALSE}
 # Load functions
@@ -21,10 +28,11 @@ library(dplyr)
 library(ggplot2)
 library(lubridate)
 library(viridis)
-
+library(wesanderson)
+library(kableExtra)
 ```
 
-```{r load-data, echo = FALSE, message = FALSE}
+```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
 # Load in Rs, K, weather, and inventory data
 inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv")
 ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
@@ -83,13 +91,13 @@ sunset <- 19
 
 control_long %>% 
   #Then, we need to transform K to Js (sapflux density) through a conversion
-  mutate(Js = 119* 10^(-4) * K^(1.231)) %>% 
+  mutate(Js = 119* 10^(-6) * K^(1.231)) %>% 
   filter(Tree %in% rs_trees) %>% 
   # Then, we need to round the timestamp to the nearest hour and take hourly averages
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js)) -> control_filter
+  summarise(Js_avg = mean(Js, na.rm = TRUE), VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
 
 rs_long %>%
   filter(Flux > 0, Flux < 25, SMoist > 0) %>%
@@ -107,11 +115,14 @@ control_filter %>%
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
   group_by(Hour, Species_code) %>% 
-  summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), Precip = mean(Precip, na.rm = TRUE), 
-            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE)) %>% 
+  summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), 
+            DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
+            Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
+            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE),
+            SM = mean(SM, na.rm = TRUE), Tsoil = mean(T5, na.rm = TRUE)) %>% 
   mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
   left_join(species_codes) -> hourly
-
+#add SM and temp
 gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
 
 combined %>% 
@@ -119,13 +130,13 @@ combined %>%
   group_by(Date) %>% 
   summarise(rs_daily = mean(rs_avg, na.rm = TRUE), Js_daily = mean(Js_avg, na.rm = TRUE), 
             DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
-            Precip = mean(Precip, na.rm = TRUE), RH = mean(RH, na.rm = TRUE), 
-            Tair = mean(Tair, na.rm = TRUE), SM = mean(SM, na.rm = TRUE), 
-            T5 = mean(T5, na.rm = TRUE)) -> daily
+            Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
+            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE), 
+            SM = mean(SM, na.rm = TRUE), T5 = mean(T5, na.rm = TRUE)) -> daily
 
 ```
 
-```{r hour-of-day}
+```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
 rs_max <- 11
 hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
@@ -155,7 +166,8 @@ ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)
   
 ```
 
-```{r rs-js plot}
+
+```{r rs-js plot, echo = FALSE, message = FALSE}
 ggplot(hourly, aes(x = Js_havg, rs_havg)) +
   geom_point(aes(color = Daytime)) +
   geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
@@ -165,17 +177,62 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
   scale_fill_viridis(discrete = TRUE,
                      name = "Time of Day",
                      labels = c("Nighttime", "Daytime")) +
-  labs(x = "Js (cm/s)", y = "Rs (umol/m/s)") +
+  labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
   theme_minimal()
 ```
 
-```{r sunny-cloudy}
+
+```{r Q10, echo = FALSE, message = FALSE}
+combined %>% 
+  mutate(Daytime = if_else(hour(Timestamp) > sunrise & hour(Timestamp) < sunset, TRUE, FALSE)) %>% 
+  filter(T5 < 50) -> data
+
+## Daytime Q10
+daytime <- filter(data, Daytime == TRUE)
+model_d <- lm(log(rs_avg) ~ T5, data = daytime)
+daytime$prediction <- exp(predict(model_d))
+# ggplot(daytime, aes(x = T5, y = rs_avg)) + 
+#   geom_point() +
+#   geom_line(data = daytime, aes(y = prediction), linetype = 2)
+# cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
+
+## Nighttime Q10
+nighttime <- filter(data, Daytime == FALSE)
+model_n <- lm(log(rs_avg) ~ T5, data = nighttime)
+nighttime$prediction <- exp(predict(model_n))
+# ggplot(nighttime, aes(x = T5, y = rs_avg)) + 
+#   geom_point() + 
+#   geom_line(data = nighttime, aes(y = prediction), linetype = 2)
+# cat("Model Q10 =", exp(10 ^ model_n$coefficients[2]))
+
+## Plot
+ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) + 
+  geom_point() +
+  scale_color_viridis(discrete = TRUE,
+                      name = "Time of Day",
+                      labels = c("Nighttime", "Daytime")) +
+  annotate("text", x = 10, y = 21.5, 
+           label = paste("Q10 =", round(exp(10 ^ model_d$coefficients[2]), digits = 3)), 
+           color = "#FDE725FF") +
+  annotate("text", x = 10, y = 20, 
+          label = paste("Q10=", round(exp(10 ^ model_n$coefficients[2]), digits = 3)), 
+          color = "#440154FF") +
+  theme_minimal()
+
+```
+
+## Analysis Progress
+- Rs, Js, and climate variables parsed to same timescale
+- Data separated into **sunny days** (top 1/3 PAR) and **cloudy days** (bottom 1/3 PAR)
+
+**Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are tested the important of PAR on the relationship.
+
+```{r sunny-cloudy, echo = FALSE, message = FALSE, warning = FALSE}
 daily %>% mutate(group = ntile(PAR, 3)) -> PAR_groups
 
 pal <- (wes_palette(name = "Zissou1", 3, type = "continuous"))
 
 ggplot(PAR_groups, aes(x = group, y = log(PAR), color = as.factor(group))) + 
-  geom_violin() + 
   geom_jitter() + 
   ggtitle("PAR") + 
   scale_colour_manual(values = pal, name = "Tercile") + 
@@ -186,8 +243,8 @@ cloudy <- filter(PAR_groups, group == "1") %>% select(DOY)
 
 ```
 
+![](progress.png)
 
 Number of Js obs: `r nrow(combined)`
 Number of Rs obs: `r nrow(combined)`
-
 
