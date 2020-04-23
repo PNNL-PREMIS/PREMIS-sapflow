@@ -241,9 +241,39 @@ ggplot(PAR_groups, aes(x = group, y = log(PAR), color = as.factor(group))) +
 sunny <- filter(PAR_groups, group == "3") %>% select(DOY)
 cloudy <- filter(PAR_groups, group == "1") %>% select(DOY)
 
-```
+combined %>% 
+  ungroup() %>% 
+  select(DOY, VPD_avg, T5, SM, Precip, RH, Tair) %>% 
+  group_by(DOY) %>% 
+  summarise(VPD = mean(VPD_avg), T5 = mean(T5), SM = mean(SM),
+            Precip = mean(Precip), RH = mean(RH, na.rm = T), Tair = mean(Tair, na.rm = T)) -> climate_data
 
-![](progress.png)
+constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "Precip" = 4, "RH" = 30, "Tair" = 15)
+
+matches <- list()
+
+for(i in 1:nrow(daily)) {
+  matches[[i]] <- tibble(DOY = daily$DOY[i], Similar_Day = similar_days(daily$DOY[i], climate_data, lookahead = 7, constraints))
+}
+
+bind_rows(matches) -> matches_df
+
+matches_df %>% 
+  filter(DOY %in% sunny$DOY) %>% 
+  filter(Similar_Day %in% cloudy$DOY) %>% 
+  rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
+
+left_join(matched_DOY, combined, by = c("Cloudy_DOY" = "DOY")) %>%
+  mutate(Coverage = "Cloudy") %>% 
+  rename(DOY = Cloudy_DOY, Match_DOY = Sunny_DOY) -> cloudy_complete
+
+left_join(matched_DOY, combined, by = c("Sunny_DOY" = "DOY")) %>% 
+  mutate(Coverage = "Sunny") %>% 
+  rename(DOY = Sunny_DOY, Match_DOY = Cloudy_DOY) -> sunny_complete
+
+bind_rows(cloudy_complete, sunny_complete) -> matches_data
+
+```
 
 Number of Js obs: `r nrow(combined)`
 Number of Rs obs: `r nrow(combined)`
