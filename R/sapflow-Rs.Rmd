@@ -30,6 +30,8 @@ library(lubridate)
 library(viridis)
 library(wesanderson)
 library(kableExtra)
+
+source(file = "find_day.R")
 ```
 
 ```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
