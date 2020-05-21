@@ -12,3 +12,4 @@ R/.Rhistory
 *.xml
 .Rproj.user
 R/sapflow-Rs.html
+.DS_Store
