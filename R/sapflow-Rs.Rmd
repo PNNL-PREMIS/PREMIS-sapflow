@@ -31,7 +31,35 @@ library(viridis)
 library(wesanderson)
 library(kableExtra)
 
+# find matches
 source(file = "find_day.R")
+
+# count observations
+log_obs <- function(d, step_name) {
+  d %>% 
+    ungroup() %>% 
+    group_by(Tree) %>% 
+    summarise(n = n()) %>% 
+    mutate(step = step_name) %>% 
+    bind_rows(obs_count_data) ->> obs_count_data
+}
+
+# computer rs-js correlation
+cor_hour <- list()
+hourly_cor <- function(dataset) {
+  for(i in 1:24) {
+    if (i %in% dataset$Hour) {
+      dataset %>% 
+        mutate(js_lag = lead(dataset$js, n = i)) -> lagged
+      
+    cor<- cor(lagged$rs, lagged$js_lag)
+    }
+    else {cor <- NA}
+    s
+    cor_hour[[i]] <<- cor
+  }
+}
+
 ```
 
 ```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
@@ -102,6 +130,14 @@ control_long %>%
   summarise(Js_avg = mean(Js, na.rm = TRUE), VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
 
 rs_long %>%
+  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
+  group_by(Timestamp, Tree, Species_code) %>%
+  summarise(rs_avg = mean(Flux), T5 = mean(T5, na.rm = TRUE), SM = mean(SMoist, na.rm = TRUE)) %>% 
+  # need to replace bad T5 and SM data
+  filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
+  ungroup() -> rs_filter
+
+rs_long %>%
   filter(Flux > 0, Flux < 25, SMoist > 0) %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
@@ -138,9 +174,35 @@ combined %>%
 
 ```
 
+```{r check-count}
+# Check Rs counts
+obs_count_data <- tibble()
+log_obs(rs_long, "1")
+log_obs(rs_filter, "2")
+log_obs(combined, "3")
+
+ggplot(obs_count_data, aes(x = step, y = n, colour = Tree, group = Tree)) + 
+  geom_line() +
+  theme_minimal() -> rs_counts
+
+# Check Js counts
+tree_names <- c("C3", "C6", "C7", "C8")
+
+obs_count_data <- tibble()
+log_obs(control_long, "1")
+log_obs(control_filter, "2")
+log_obs(combined, "3")
+
+ggplot(filter(obs_count_data, Tree %in% tree_names), aes(x = step, y = n, color = Tree, group = Tree)) + 
+  geom_line() +
+  theme_minimal() -> js_counts
+
+```
+
 ```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
 rs_max <- 11
+
 hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
 
 hourly_long %>% 
@@ -181,13 +243,13 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
                      labels = c("Nighttime", "Daytime")) +
   labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
   theme_minimal()
+
 ```
 
 
 ```{r Q10, echo = FALSE, message = FALSE}
 combined %>% 
-  mutate(Daytime = if_else(hour(Timestamp) > sunrise & hour(Timestamp) < sunset, TRUE, FALSE)) %>% 
-  filter(T5 < 50) -> data
+  mutate(Daytime = if_else(hour(Timestamp) > sunrise & hour(Timestamp) < sunset, TRUE, FALSE)) -> data
 
 ## Daytime Q10
 daytime <- filter(data, Daytime == TRUE)
@@ -279,4 +341,68 @@ bind_rows(cloudy_complete, sunny_complete) -> matches_data
 
 Number of Js obs: `r nrow(combined)`
 Number of Rs obs: `r nrow(combined)`
+
+```{r q10-sunny-cloudy}
+
+## Sunny Q10
+sunny <- filter(matches_data, Coverage == "Sunny")
+model_s <- lm(log(rs_avg) ~ T5, data = sunny)
+sunny$prediction <- exp(predict(model_s))
+# ggplot(daytime, aes(x = T5, y = rs_avg)) + 
+#   geom_point() +
+#   geom_line(data = daytime, aes(y = prediction), linetype = 2)
+# cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
+
+## Cloudy Q10
+cloudy <- filter(matches_data, Coverage == "Cloudy")
+model_c <- lm(log(rs_avg) ~ T5, data = cloudy)
+cloudy$prediction <- exp(predict(model_c))
+# ggplot(nighttime, aes(x = T5, y = rs_avg)) + 
+#   geom_point() + 
+#   geom_line(data = nighttime, aes(y = prediction), linetype = 2)
+# cat("Model Q10 =", exp(10 ^ model_n$coefficients[2]))
+
+## Plot
+ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) + 
+  geom_point() +
+  scale_color_viridis(discrete = TRUE) +
+  annotate("text", x = 10, y = 21.5, 
+           label = paste("Q10 =", round(exp(10 ^ model_s$coefficients[2]), digits = 3)), 
+           color = "#FDE725FF") +
+  annotate("text", x = 10, y = 20, 
+          label = paste("Q10=", round(exp(10 ^ model_c$coefficients[2]), digits = 3)), 
+          color = "#440154FF") +
+  theme_minimal()
+
+```
+
+## Lag Analysis
+
+```{r lag-analysis}
+
+matches_data %>% 
+  filter(Coverage == "Sunny") %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Tree, Hour) %>% 
+  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_sunny
+
+matches_data %>% 
+  filter(Coverage == "Cloudy") %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Hour) %>% 
+  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_cloudy
+
+# lags <- list()
+# for(i in 0:24) {
+#   dataframe_cloudy %>% 
+#     mutate(Lag = lead(Hour, n = i)) -> x
+#   
+# }
+
+  
+
+
+```
+
+Number of Js obs: `r nrow(combined)`
 
