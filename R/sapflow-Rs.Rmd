@@ -11,16 +11,11 @@ output: html_document
 
 **Target Journal:**
 
-**Primary Objective:** Understand the mechanisms that drive root-soil coupling to investigate midday depression of Rs
+**Overall Scientific Question:** What is strength and speed of above-belowground coupling (Js to Rs)?
 
-**Research Questions:** 
+### Data Prep and Preliminary Figures: 
 
-1. What is causing/driving this midday depression in Rs?
-2. How are Rs and Js coupled in time and space?
-
-## Preliminary Figures and Takeaway:
-
-```{r functions, echo = FALSE, message = FALSE}
+```{r functions, include = FALSE, message = FALSE}
 # Load functions
 library(readr)
 library(tidyr)
@@ -174,7 +169,7 @@ combined %>%
 
 ```
 
-```{r check-count}
+```{r check-count, echo = FALSE}
 # Check Rs counts
 obs_count_data <- tibble()
 log_obs(rs_long, "1")
@@ -285,13 +280,47 @@ ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) +
 
 ```
 
-## Analysis Progress
-- Rs, Js, and climate variables parsed to same timescale
-- Data separated into **sunny days** (top 1/3 PAR) and **cloudy days** (bottom 1/3 PAR)
+## Science Questions. {.tabset .tabset-pills}
+
+### Q1: For the overall dataset, how correlated are Js and Rs, at what time lags? 
+(Between the fluxes; here and afterward, on a per-tree basis.)
+
+- Whole dataset
+- Compute lag correlation for each tree
+
+#### H1.1. Hypothesis-time. 
+Js and Rs will be correlated at some lag of (probably) multiple hours, because of the time it takes for sap to ascend; photosynthesis to occur; phloem to descend to roots; respiration to occur; and resulting CO2 to diffuse to soil surface .
+
+#### H1.2 Hypothesis-species. 
+We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
+
+
+### Q2: How does this change over the course of the growing season? 
+
+- For each day (week?) of year, calculate the correlation between Js and Rs for each hour lag
+- Dendrometer data to show growth changes?
+
+#### H2.1. Hypothesis. 
+We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
+
+
+### Q3: Is this correlation or causation? 
+
+#### H3.1. Hypothesis. 
+If H1.1 is correct, then days with more sunlight would have a stronger correlation.
+
+To examine this issue, we look at matched days, i.e. that are in the same part of the growing season and have similar conditions EXCEPT for sunlight.
 
 **Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are tested the important of PAR on the relationship.
 
-```{r sunny-cloudy, echo = FALSE, message = FALSE, warning = FALSE}
+- Rs, Js, and climate variables parsed to same timescale
+- Data separated into **sunny days** (top 1/3 PAR) and **cloudy days** (bottom 1/3 PAR)
+- Just the matched days, how do the max-cor-lags differ between them?
+- Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
+
+
+```{r sunny-cloudy, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE}
+
 daily %>% mutate(group = ntile(PAR, 3)) -> PAR_groups
 
 pal <- (wes_palette(name = "Zissou1", 3, type = "continuous"))
@@ -339,10 +368,33 @@ bind_rows(cloudy_complete, sunny_complete) -> matches_data
 
 ```
 
+```{r lag-analysis-matches, echo = FALSE, message = FALSE}
+
+matches_data %>% 
+  filter(Coverage == "Sunny") %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Tree, Hour) %>% 
+  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_sunny
+
+matches_data %>% 
+  filter(Coverage == "Cloudy") %>% 
+  mutate(Hour = hour(Timestamp)) %>% 
+  group_by(Hour) %>% 
+  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_cloudy
+
+# lags <- list()
+# for(i in 0:24) {
+#   dataframe_cloudy %>% 
+#     mutate(Lag = lead(Hour, n = i)) -> x
+#   
+# }
+
+
+```
 Number of Js obs: `r nrow(combined)`
 Number of Rs obs: `r nrow(combined)`
 
-```{r q10-sunny-cloudy}
+```{r q10-sunny-cloudy, echo = FALSE, message = FALSE}
 
 ## Sunny Q10
 sunny <- filter(matches_data, Coverage == "Sunny")
@@ -375,34 +427,4 @@ ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) +
   theme_minimal()
 
 ```
-
-## Lag Analysis
-
-```{r lag-analysis}
-
-matches_data %>% 
-  filter(Coverage == "Sunny") %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Tree, Hour) %>% 
-  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_sunny
-
-matches_data %>% 
-  filter(Coverage == "Cloudy") %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour) %>% 
-  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_cloudy
-
-# lags <- list()
-# for(i in 0:24) {
-#   dataframe_cloudy %>% 
-#     mutate(Lag = lead(Hour, n = i)) -> x
-#   
-# }
-
-  
-
-
-```
-
-Number of Js obs: `r nrow(combined)`
 
