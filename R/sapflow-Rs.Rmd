@@ -2,7 +2,8 @@
 title: "sapflow-Rs"
 author: "SP"
 date: "9/10/2019"
-output: html_document
+output:
+  html_document: default
 ---
 
 **Title:** (From AGU) Using continuous sap flux and soil respiration datasets to infer the strength and speed of root-soil coupling in a deciduous forest
@@ -39,20 +40,20 @@ log_obs <- function(d, step_name) {
     bind_rows(obs_count_data) ->> obs_count_data
 }
 
-# computer rs-js correlation
-cor_hour <- list()
-hourly_cor <- function(dataset) {
-  for(i in 1:24) {
-    if (i %in% dataset$Hour) {
-      dataset %>% 
-        mutate(js_lag = lead(dataset$js, n = i)) -> lagged
-      
-    cor<- cor(lagged$rs, lagged$js_lag)
-    }
-    else {cor <- NA}
-    s
-    cor_hour[[i]] <<- cor
+# compute rs-js correlation
+compute_lag_cor <- function(rs, js, length) {
+  # `rs` and `js` are numeric vectors with the same length
+  # length is a numeric vector of length 2 that contains the start and end hour
+  
+  for(i in length[1]:length[2]) {
+#    if (i %in% dataset$Hour) stop("Dataset not complete: missing hour")
+   
+    js_lag <- lead(js, n = i)
+    cor <- cor(rs, js_lag, use = "na.or.complete")
+    cor_hour[[i+1]] <<- tibble(Hour = i, Cor = cor)
+    
   }
+  bind_rows(cor_hour)
 }
 
 ```
@@ -78,6 +79,7 @@ control_hm %>%
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
 
+##check where licor data is coming from 
 read_csv("../SERC/con_licor_data_20191120.csv") %>%
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
@@ -124,11 +126,12 @@ control_long %>%
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE), VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
 
+####RESOLVE THIS 
 rs_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
   summarise(rs_avg = mean(Flux), T5 = mean(T5, na.rm = TRUE), SM = mean(SMoist, na.rm = TRUE)) %>% 
-  # need to replace bad T5 and SM data
+  # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   ungroup() -> rs_filter
 
@@ -286,7 +289,17 @@ ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) +
 (Between the fluxes; here and afterward, on a per-tree basis.)
 
 - Whole dataset
-- Compute lag correlation for each tree
+- Compute lag correlation for each tree - each timestamp hour
+
+```{r q1, echo = FALSE}
+cor_hour <- list()
+
+combined %>% 
+  split(Tree) -> grouped
+
+group_map(grouped, compute_lag_cor(rs_avg, Js_avg, length = c(0,23)))
+
+```
 
 #### H1.1. Hypothesis-time. 
 Js and Rs will be correlated at some lag of (probably) multiple hours, because of the time it takes for sap to ascend; photosynthesis to occur; phloem to descend to roots; respiration to occur; and resulting CO2 to diffuse to soil surface .
@@ -294,15 +307,13 @@ Js and Rs will be correlated at some lag of (probably) multiple hours, because o
 #### H1.2 Hypothesis-species. 
 We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
 
-
 ### Q2: How does this change over the course of the growing season? 
 
-- For each day (week?) of year, calculate the correlation between Js and Rs for each hour lag
+- For each day (week?) of year, calculate the correlation between Js and Rs for each hour lag (using function) and pull out max correlation lag
 - Dendrometer data to show growth changes?
 
 #### H2.1. Hypothesis. 
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
-
 
 ### Q3: Is this correlation or causation? 
 
