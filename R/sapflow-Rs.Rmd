@@ -41,19 +41,17 @@ log_obs <- function(d, step_name) {
 }
 
 # compute rs-js correlation
-compute_lag_cor <- function(rs, js, length) {
+compute_lag_cor <- function(rs, js, hour_range) {
   # `rs` and `js` are numeric vectors with the same length
-  # length is a numeric vector of length 2 that contains the start and end hour
+  # hour_range is a numeric vector of length 2 that contains the start and end hour to lag
+  hours <- min(hour_range):max(hour_range)
+  result <- tibble(Hour = hours, Cor = NA)
   
-  for(i in length[1]:length[2]) {
-#    if (i %in% dataset$Hour) stop("Dataset not complete: missing hour")
-   
-    js_lag <- lead(js, n = i)
-    cor <- cor(rs, js_lag, use = "na.or.complete")
-    cor_hour[[i+1]] <<- tibble(Hour = i, Cor = cor)
-    
+  for(i in seq_along(hours)) {
+    js_lag <- lead(js, n = hours[i])
+    result$Cor[i] <- cor(rs, js_lag, use = "na.or.complete")
   }
-  bind_rows(cor_hour)
+  return(result)
 }
 
 ```
@@ -197,6 +195,14 @@ ggplot(filter(obs_count_data, Tree %in% tree_names), aes(x = step, y = n, color 
 
 ```
 
+```{r complete, echo = FALSE}
+
+combined %>% 
+  ungroup() %>% 
+  complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> full
+
+```
+
 ```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
 rs_max <- 11
@@ -228,7 +234,6 @@ ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)
   
 ```
 
-
 ```{r rs-js plot, echo = FALSE, message = FALSE}
 ggplot(hourly, aes(x = Js_havg, rs_havg)) +
   geom_point(aes(color = Daytime)) +
@@ -243,7 +248,6 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
   theme_minimal()
 
 ```
-
 
 ```{r Q10, echo = FALSE, message = FALSE}
 combined %>% 
@@ -291,21 +295,28 @@ ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) +
 - Whole dataset
 - Compute lag correlation for each tree - each timestamp hour
 
-```{r q1, echo = FALSE}
-cor_hour <- list()
-
-combined %>% 
-  split(Tree) -> grouped
-
-group_map(grouped, compute_lag_cor(rs_avg, Js_avg, length = c(0,23)))
-
-```
-
 #### H1.1. Hypothesis-time. 
 Js and Rs will be correlated at some lag of (probably) multiple hours, because of the time it takes for sap to ascend; photosynthesis to occur; phloem to descend to roots; respiration to occur; and resulting CO2 to diffuse to soil surface .
 
 #### H1.2 Hypothesis-species. 
 We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
+
+```{r q1, echo = FALSE}
+
+full %>%
+  group_by(Tree) %>%
+  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> q1
+
+ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line() + theme_minimal()
+
+q1 %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  select(Tree, Species_code, Hour, Cor) %>% 
+  group_by(Tree) %>% 
+  summarise(`Species` = Species_code[which.max(Cor)], `Hour Lag` = Hour[which.max(Cor)], `Maximum Correlation` = max(Cor)) %>% 
+  kable("html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+```
 
 ### Q2: How does this change over the course of the growing season? 
 
@@ -314,6 +325,37 @@ We expect there to be differences in peak lag and correlation between the two sp
 
 #### H2.1. Hypothesis. 
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
+
+```{r q2, echo = FALSE}
+growing_season <- c(5, 6, 7, 8, 9, 10)
+
+full %>% 
+  mutate(Month = month(Timestamp), Week = week(Timestamp)) %>% 
+  filter(Month %in% growing_season) -> growing # filter for growing season
+
+weeks <- sort(unique(growing$Week))
+q2_list <- list() 
+
+for(i in 1:length(weeks)) {
+  
+  growing %>% 
+    filter(Week == weeks[i]) %>% 
+    group_by(Tree) %>% 
+    do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> tib 
+  
+  q2_list[[weeks[i]]] <- tib
+  
+}
+
+bind_rows(q2_list, .id = "Week") %>% na.omit() -> q2
+
+ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+  geom_tile() + 
+  facet_wrap(~Tree) + 
+  theme_minimal() + 
+  scale_fill_distiller(palette = "RdBu") -> p1
+
+```
 
 ### Q3: Is this correlation or causation? 
 
