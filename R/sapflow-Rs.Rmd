@@ -287,6 +287,20 @@ ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) +
 
 ```
 
+```{r q0, echo = FALSE}
+
+ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
+  geom_line() + 
+  facet_wrap(~Tree, scales = "free", ncol = 2) +
+  theme_minimal()
+
+ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
+  geom_line() +
+  facet_wrap(~Tree, scales = "free") +
+  theme_minimal()
+
+```
+
 ## Science Questions. {.tabset .tabset-pills}
 
 ### Q1: For the overall dataset, how correlated are Js and Rs, at what time lags? 
@@ -374,6 +388,13 @@ To examine this issue, we look at matched days, i.e. that are in the same part o
 
 ```{r sunny-cloudy, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE}
 
+#Take full dataset and split into groups based on PAR
+combined %>% 
+  mutate(PAR_group = ntile(PAR, 3)) %>% 
+  filter(PAR_group == "1" | PAR_group == "3") %>% 
+  mutate(Coverage = ifelse(PAR_group == "3", "Sunny", "Cloudy")) -> full_sc
+
+# Note this splits the daily averages up
 daily %>% mutate(group = ntile(PAR, 3)) -> PAR_groups
 
 pal <- (wes_palette(name = "Zissou1", 3, type = "continuous"))
@@ -421,8 +442,23 @@ bind_rows(cloudy_complete, sunny_complete) -> matches_data
 
 ```
 
-```{r lag-analysis-matches, echo = FALSE, message = FALSE}
+```{r q3a. echo = FALSE}
+# Lag over whole growing season by sunny vs. cloudy
 
+full_sc %>%
+  group_by(Tree, Coverage) %>%
+  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> q3a
+
+ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage)) + 
+  geom_line() +
+  facet_wrap(~Tree) +
+  theme_minimal()
+
+```
+
+```{r q3b, echo = FALSE, message = FALSE}
+
+# Lag cor analysis of matched days
 matches_data %>% 
   filter(Coverage == "Sunny") %>% 
   mutate(Hour = hour(Timestamp)) %>% 
