@@ -11,5 +11,6 @@ R/PREMIS-sapflow.Rproj
 R/.Rhistory
 *.xml
 .Rproj.user
-R/sapflow-Rs.html
 *.html
+R/.DS_Store
+R/sapflow-Rs.html
