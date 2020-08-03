@@ -362,7 +362,7 @@ for(i in 1:length(weeks)) {
     group_by(Tree) %>% 
     do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> tib 
   
-  q2_list[[weeks[i]]] <- tib
+  q2_list[[as.character(weeks[i])]] <- tib
   
 }
 
