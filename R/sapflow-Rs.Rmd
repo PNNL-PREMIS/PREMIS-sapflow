@@ -144,7 +144,9 @@ control_filter %>%
   left_join(rs_filter) %>% 
   na.omit() %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
-  mutate(DOY = yday(Timestamp)) -> combined
+  mutate(DOY = yday(Timestamp)) %>% 
+  ungroup() %>% 
+  complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> combined
 
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
@@ -161,12 +163,14 @@ gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
-  group_by(Date) %>% 
+  group_by(Date, Tree) %>% 
   summarise(rs_daily = mean(rs_avg, na.rm = TRUE), Js_daily = mean(Js_avg, na.rm = TRUE), 
             DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
             Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
             RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE), 
-            SM = mean(SM, na.rm = TRUE), T5 = mean(T5, na.rm = TRUE)) -> daily
+            SM = mean(SM, na.rm = TRUE), T5 = mean(T5, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day"))-> daily
 
 ```
 
@@ -192,14 +196,6 @@ log_obs(combined, "3")
 ggplot(filter(obs_count_data, Tree %in% tree_names), aes(x = step, y = n, color = Tree, group = Tree)) + 
   geom_line() +
   theme_minimal() -> js_counts
-
-```
-
-```{r complete, echo = FALSE}
-
-combined %>% 
-  ungroup() %>% 
-  complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> full
 
 ```
 
@@ -304,8 +300,8 @@ ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
 ```{r q0b, echo = FALSE}
 # PACF temporal characteristics 
 
-pacf(combined$rs_avg)
-pacf(combined$Js_avg)
+pacf(combined$rs_avg, na.action = na.pass)
+pacf(combined$Js_avg, na.action = na.pass)
 
 ```
 
