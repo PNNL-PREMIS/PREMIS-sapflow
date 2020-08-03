@@ -250,44 +250,44 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
 ```
 
 ```{r Q10, echo = FALSE, message = FALSE}
-combined %>% 
-  mutate(Daytime = if_else(hour(Timestamp) > sunrise & hour(Timestamp) < sunset, TRUE, FALSE)) -> data
-
-## Daytime Q10
-daytime <- filter(data, Daytime == TRUE)
-model_d <- lm(log(rs_avg) ~ T5, data = daytime)
-daytime$prediction <- exp(predict(model_d))
-# ggplot(daytime, aes(x = T5, y = rs_avg)) + 
-#   geom_point() +
-#   geom_line(data = daytime, aes(y = prediction), linetype = 2)
-# cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
-
-## Nighttime Q10
-nighttime <- filter(data, Daytime == FALSE)
-model_n <- lm(log(rs_avg) ~ T5, data = nighttime)
-nighttime$prediction <- exp(predict(model_n))
+# combined %>% 
+#   mutate(Daytime = if_else(hour(Timestamp) > sunrise & hour(Timestamp) < sunset, TRUE, FALSE)) -> data
+# 
+# ## Daytime Q10
+# daytime <- filter(data, Daytime == TRUE)
+# model_d <- lm(log(rs_avg) ~ T5, data = daytime)
+# daytime$prediction <- exp(predict(model_d))
+# # ggplot(daytime, aes(x = T5, y = rs_avg)) + 
+# #   geom_point() +
+# #   geom_line(data = daytime, aes(y = prediction), linetype = 2)
+# # cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
+# 
+# ## Nighttime Q10
+# nighttime <- filter(data, Daytime == FALSE)
+# model_n <- lm(log(rs_avg) ~ T5, data = nighttime)
+# nighttime$prediction <- exp(predict(model_n))
 # ggplot(nighttime, aes(x = T5, y = rs_avg)) + 
 #   geom_point() + 
 #   geom_line(data = nighttime, aes(y = prediction), linetype = 2)
 # cat("Model Q10 =", exp(10 ^ model_n$coefficients[2]))
 
 ## Plot
-ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) + 
-  geom_point() +
-  scale_color_viridis(discrete = TRUE,
-                      name = "Time of Day",
-                      labels = c("Nighttime", "Daytime")) +
-  annotate("text", x = 10, y = 21.5, 
-           label = paste("Q10 =", round(exp(10 ^ model_d$coefficients[2]), digits = 3)), 
-           color = "#FDE725FF") +
-  annotate("text", x = 10, y = 20, 
-          label = paste("Q10=", round(exp(10 ^ model_n$coefficients[2]), digits = 3)), 
-          color = "#440154FF") +
-  theme_minimal()
+#ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) + 
+  # geom_point() +
+  # scale_color_viridis(discrete = TRUE,
+  #                     name = "Time of Day",
+  #                     labels = c("Nighttime", "Daytime")) +
+  # annotate("text", x = 10, y = 21.5, 
+  #          label = paste("Q10 =", round(exp(10 ^ model_d$coefficients[2]), digits = 3)), 
+  #          color = "#FDE725FF") +
+  # annotate("text", x = 10, y = 20, 
+  #         label = paste("Q10=", round(exp(10 ^ model_n$coefficients[2]), digits = 3)), 
+  #         color = "#440154FF") +
+  # theme_minimal()
 
 ```
 
-```{r q0, echo = FALSE}
+```{r q0a, echo = FALSE}
 
 ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
   geom_line() + 
@@ -301,7 +301,16 @@ ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
 
 ```
 
-## Science Questions. {.tabset .tabset-pills}
+```{r q0b, echo = FALSE}
+# PACF temporal characteristics 
+
+pacf(combined$rs_avg)
+pacf(combined$Js_avg)
+
+```
+
+## Science Questions.
+# {.tabset .tabset-pills}
 
 ### Q1: For the overall dataset, how correlated are Js and Rs, at what time lags? 
 (Between the fluxes; here and afterward, on a per-tree basis.)
@@ -367,7 +376,7 @@ ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) +
   geom_tile() + 
   facet_wrap(~Tree) + 
   theme_minimal() + 
-  scale_fill_distiller(palette = "RdBu") -> p1
+  scale_fill_distiller(palette = "RdBu")
 
 ```
 
@@ -390,6 +399,7 @@ To examine this issue, we look at matched days, i.e. that are in the same part o
 
 #Take full dataset and split into groups based on PAR
 combined %>% 
+  ungroup %>% 
   mutate(PAR_group = ntile(PAR, 3)) %>% 
   filter(PAR_group == "1" | PAR_group == "3") %>% 
   mutate(Coverage = ifelse(PAR_group == "3", "Sunny", "Cloudy")) -> full_sc
@@ -432,24 +442,25 @@ matches_df %>%
 
 left_join(matched_DOY, combined, by = c("Cloudy_DOY" = "DOY")) %>%
   mutate(Coverage = "Cloudy") %>% 
-  rename(DOY = Cloudy_DOY, Match_DOY = Sunny_DOY) -> cloudy_complete
+  rename(DOY = Cloudy_DOY, Group_No = Sunny_DOY) -> cloudy_complete
 
 left_join(matched_DOY, combined, by = c("Sunny_DOY" = "DOY")) %>% 
-  mutate(Coverage = "Sunny") %>% 
-  rename(DOY = Sunny_DOY, Match_DOY = Cloudy_DOY) -> sunny_complete
+  mutate(Coverage = "Sunny", Group_No = Sunny_DOY) %>% 
+  rename(DOY = Sunny_DOY) %>% 
+  select(-Cloudy_DOY) -> sunny_complete
 
 bind_rows(cloudy_complete, sunny_complete) -> matches_data
 
 ```
 
-```{r q3a. echo = FALSE}
+```{r q3a, echo = FALSE}
 # Lag over whole growing season by sunny vs. cloudy
-
+# should be using DAILY PAR FOR THIS!!!!!!!!!!!!
 full_sc %>%
-  group_by(Tree, Coverage) %>%
+  group_by(Tree, Coverage) %>% na.omit() %>% 
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> q3a
 
-ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage)) + 
+ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
   geom_line() +
   facet_wrap(~Tree) +
   theme_minimal()
@@ -457,31 +468,16 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage)) +
 ```
 
 ```{r q3b, echo = FALSE, message = FALSE}
+# Plot of sunny DOYs with cloudy DOYs
 
-# Lag cor analysis of matched days
-matches_data %>% 
-  filter(Coverage == "Sunny") %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Tree, Hour) %>% 
-  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_sunny
-
-matches_data %>% 
-  filter(Coverage == "Cloudy") %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour) %>% 
-  summarise(Rs = mean(rs_avg), Js = mean(Js_avg)) -> dataframe_cloudy
-
-# lags <- list()
-# for(i in 0:24) {
-#   dataframe_cloudy %>% 
-#     mutate(Lag = lead(Hour, n = i)) -> x
-#   
-# }
-
-
+# ggplot(matches_data, aes(x = hour(Timestamp), y = Js_avg, color = Coverage, group = DOY)) + 
+#   geom_point() + geom_line() +  
+#   facet_wrap(Tree~Group_No, scales = "free") + theme_minimal()
+# 
+# ggplot(matches_data, aes(x = hour(Timestamp), y = rs_avg, color = Coverage, group = DOY)) + 
+#   geom_point() + geom_line() + 
+#   facet_wrap(Tree~Group_No, scales = "free") + theme_minimal()
 ```
-Number of Js obs: `r nrow(combined)`
-Number of Rs obs: `r nrow(combined)`
 
 ```{r q10-sunny-cloudy, echo = FALSE, message = FALSE}
 
