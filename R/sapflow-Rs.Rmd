@@ -97,7 +97,7 @@ read_csv("../SERC/met_data/RH_30min.csv") %>%
 read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
   mutate(Timestamp = ymd_hms(endDateTime), DOY = yday(Timestamp)) %>% 
   rename(PAR = PARMean) %>% 
-  filter(verticalPosition == "060") %>% 
+  filter(verticalPosition == "050") %>% 
   select(Timestamp, DOY, PAR) %>%
   left_join(precip, by = "Timestamp") %>% 
   left_join(temprh, by = "Timestamp") %>% 
@@ -348,7 +348,7 @@ We expect to see changes in the strength and speed of coupling, probably because
 ```{r q2, echo = FALSE}
 growing_season <- c(5, 6, 7, 8, 9, 10)
 
-full %>% 
+combined %>% 
   mutate(Month = month(Timestamp), Week = week(Timestamp)) %>% 
   filter(Month %in% growing_season) -> growing # filter for growing season
 
@@ -372,6 +372,7 @@ ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) +
   geom_tile() + 
   facet_wrap(~Tree) + 
   theme_minimal() + 
+  geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu")
 
 ```
