@@ -26,6 +26,7 @@ library(lubridate)
 library(viridis)
 library(wesanderson)
 library(kableExtra)
+library(suncalc)
 
 # find matches
 source(file = "find_day.R")
@@ -95,16 +96,29 @@ read_csv("../SERC/met_data/RH_30min.csv") %>%
   select(Timestamp, RH, Tair) -> temprh
 
 read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime), DOY = yday(Timestamp)) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime), DOY = yday(Timestamp), Date = date(Timestamp)) %>% 
   rename(PAR = PARMean) %>% 
   filter(verticalPosition == "050") %>% 
-  select(Timestamp, DOY, PAR) %>%
+  select(Timestamp, DOY, PAR, Date) %>%
   left_join(precip, by = "Timestamp") %>% 
   left_join(temprh, by = "Timestamp") %>% 
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   group_by(Timestamp) %>% 
   summarise(DOY = mean(DOY), PAR = mean(PAR), 
-            Precip = mean(Precip), RH = mean(RH), Tair = mean(Tair)) -> wx_dat
+            Precip = mean(Precip), RH = mean(RH), Tair = mean(Tair), Date = mean(Date)) -> wx_dat
+
+# Compute daytime PAR as a new column
+# To split PAR groups, we need to use daily averages of daytime values
+sunlight_times <- getSunlightTimes(wx_dat$Date, lat = 38.9, lon = -77, tz = "UTC", keep = c("sunrise", "sunset"))
+
+wx_dat$sunrise <- sunlight_times$sunrise
+wx_dat$sunset <- sunlight_times$sunset
+# Check time zones before this step
+wx_dat %>% 
+  filter(Timestamp >= sunrise, Timestamp <= sunset) %>% 
+  group_by(DOY) %>% 
+  summarise(Daytime_PAR = mean(PAR, na.rm = TRUE)) %>% 
+  right_join(wx_dat, by = "DOY")-> x
 
 ```
 
@@ -147,6 +161,8 @@ control_filter %>%
   mutate(DOY = yday(Timestamp)) %>% 
   ungroup() %>% 
   complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> combined
+
+# At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
 
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
@@ -392,7 +408,7 @@ To examine this issue, we look at matched days, i.e. that are in the same part o
 - Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
 
 
-```{r sunny-cloudy, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE}
+```{r sunny-cloudy, echo=FALSE, message=FALSE, warning=FALSE, include=}
 
 #Take full dataset and split into groups based on PAR
 combined %>% 
@@ -401,8 +417,11 @@ combined %>%
   filter(PAR_group == "1" | PAR_group == "3") %>% 
   mutate(Coverage = ifelse(PAR_group == "3", "Sunny", "Cloudy")) -> full_sc
 
-# Note this splits the daily averages up
-daily %>% mutate(group = ntile(PAR, 3)) -> PAR_groups
+# Filter for sunlight and split into terciles 
+daily %>%
+  left_join(sunlight_times, by = c("Date" = "date")) %>% 
+  filter() %>% # NEED TO FILTER OUT NIGHT
+  mutate(group = ntile(PAR, 3)) -> PAR_groups #ntile should be using DAYTIME par values
 
 pal <- (wes_palette(name = "Zissou1", 3, type = "continuous"))
 
