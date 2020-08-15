@@ -127,7 +127,7 @@ wx_dat_no_dpar %>%
   # compute daytime PAR groups - sunny, medium, cloudy
   group_by(month(Timestamp)) %>% 
   mutate(PAR_group = ntile(Daytime_PAR, 3)) %>% 
-  select(-sunrise, -sunset, -`month(Timestamp)`) ->  # no longer needed
+  select(-`month(Timestamp)`) ->  # no longer needed
   wx_dat
 ```
 
