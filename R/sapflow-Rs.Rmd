@@ -22,6 +22,7 @@ library(readr)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+theme_set(theme_minimal())
 library(lubridate)
 library(viridis)
 library(wesanderson)
@@ -237,8 +238,7 @@ log_obs(rs_filter, "2")
 log_obs(combined, "3")
 
 ggplot(obs_count_data, aes(x = step, y = n, colour = Tree, group = Tree)) + 
-  geom_line() +
-  theme_minimal() -> rs_counts
+  geom_line() -> rs_counts
 
 # Check Js counts
 tree_names <- c("C3", "C6", "C7", "C8")
@@ -248,26 +248,26 @@ log_obs(control_long, "1")
 log_obs(control_filter, "2")
 log_obs(combined, "3")
 
-ggplot(filter(obs_count_data, Tree %in% tree_names), aes(x = step, y = n, color = Tree, group = Tree)) + 
-  geom_line() +
-  theme_minimal() -> js_counts
-
+obs_count_data %>% 
+  filter(Tree %in% tree_names) %>% 
+  ggplot(aes(x = step, y = n, color = Tree, group = Tree)) + 
+  geom_line() -> js_counts
 ```
 
 ```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
 rs_max <- 11
 
-hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
+hourly_long[which(hourly_long$Type == "Js_avg"), ] -> x
 
 hourly_long %>% 
   ungroup %>% 
-  filter(Type == "Js_havg") %>% 
+  filter(Type == "Js_avg") %>% 
   select(-Value) %>% 
   mutate(Value  = (rs_max - rs_min) * ((x$Value - min(x$Value)) / (max(x$Value) - min(x$Value))) + rs_min) -> hourly_check
 
 hourly_long %>% 
-  filter(Type == "rs_havg") %>% 
+  filter(Type == "rs_avg") %>% 
   bind_rows(hourly_check) -> hourly_norm
 
 ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)) +
@@ -280,13 +280,12 @@ ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)
                       labels = c("Js", "Rs")) +
   labs(x = "Hour of Day", y = "Value") +
   facet_wrap(~Species) + 
-  theme_minimal() +
   theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
 
 ```
 
 ```{r rs-js plot, echo = FALSE, message = FALSE}
-ggplot(hourly, aes(x = Js_havg, rs_havg)) +
+ggplot(hourly, aes(x = Js_avg, rs_avg)) +
   geom_point(aes(color = Daytime)) +
   geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
   scale_color_viridis(discrete = TRUE,
@@ -295,8 +294,7 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
   scale_fill_viridis(discrete = TRUE,
                      name = "Time of Day",
                      labels = c("Nighttime", "Daytime")) +
-  labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
-  theme_minimal()
+  labs(x = "Js (m/s)", y = "Rs (umol/m/s)")
 
 ```
 
@@ -342,13 +340,11 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
 
 ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
   geom_line() + 
-  facet_wrap(~Tree, scales = "free", ncol = 2) +
-  theme_minimal()
+  facet_wrap(~Tree, scales = "free", ncol = 2)
 
 ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
   geom_line() +
-  facet_wrap(~Tree, scales = "free") +
-  theme_minimal()
+  facet_wrap(~Tree, scales = "free")
 
 ```
 
@@ -381,7 +377,7 @@ combined %>%
   group_by(Tree) %>%
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q1
 
-ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line() + theme_minimal()
+ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
 
 q1 %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
@@ -429,7 +425,6 @@ bind_rows(q2_list, .id = "Week") %>% na.omit() -> q2
 ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
-  theme_minimal() + 
   geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu")
 
@@ -505,8 +500,7 @@ full_sc %>%
 
 ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
   geom_line() +
-  facet_wrap(~Tree) +
-  theme_minimal()
+  facet_wrap(~Tree)
 
 ```
 
@@ -551,8 +545,7 @@ ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) +
            color = "#FDE725FF") +
   annotate("text", x = 10, y = 20, 
            label = paste("Q10=", round(exp(10 ^ model_c$coefficients[2]), digits = 3)), 
-           color = "#440154FF") +
-  theme_minimal()
+           color = "#440154FF")
 
 ```
 
