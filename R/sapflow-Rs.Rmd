@@ -80,7 +80,7 @@ control_hm %>%
 
 ##check where licor data is coming from 
 read_csv("../SERC/con_licor_data_20191120.csv") %>%
-  mutate(Timestamp = with_tz(Timestamp, tz = "EST")) %>% 
+  mutate(Timestamp = force_tz(Timestamp, tz = "EST")) %>% 
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
@@ -127,6 +127,7 @@ wx_dat_no_dpar %>%
   # compute daytime PAR groups - sunny, medium, cloudy
   group_by(month(Timestamp)) %>% 
   mutate(PAR_group = ntile(Daytime_PAR, 3)) %>% 
+  ungroup() %>% 
   select(-`month(Timestamp)`) ->  # no longer needed
   wx_dat
 ```
