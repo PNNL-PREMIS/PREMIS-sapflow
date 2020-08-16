@@ -35,18 +35,18 @@ similar_days <- function(day_of_year, climate_data, lookahead, constraints) {
   which(climate_data$DOY == day_of_year) -> day_row
   cd <- filter(climate_data, DOY <= day_of_year + lookahead, DOY >= day_of_year)
   which(cd$DOY == day_of_year) -> cd_day_row
-  cat("Starting with", nrow(cd), "rows\n")
+  message("Starting with ", nrow(cd), " rows\n")
   
   # Loop
   for(i in seq_along(constraints)) {
     con_name <- names(constraints)[i]
     con_value <- constraints[i]
-    cat("Constraint ", i, " is named ", con_name, " and has value ", con_value, "\n")
+    message("Constraint ", i, " is named ", con_name, " and has value ", con_value, "\n")
     # We need to unlist() to isolate single value here
     diffs <- unlist(cd[ , con_name]) - unlist(cd[cd_day_row, con_name])
-    cat("Differences are", diffs, "\n")
+    message("Differences are ", diffs, "\n")
     cd <- cd[abs(diffs) <= con_value, ]
-    cat("We now have", nrow(cd), "rows\n")
+    message("We now have ", nrow(cd), " rows\n")
   }
   
   filter(cd, DOY != day_of_year) %>% pull(DOY)
