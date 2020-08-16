@@ -124,16 +124,41 @@ wx_dat_no_dpar %>%
   summarise(Daytime_PAR = mean(PAR, na.rm = TRUE)) %>% 
   # we've computed mean *daytime* PAR; now merge back in
   right_join(wx_dat_no_dpar, by = "DOY") %>% 
-  # compute daytime PAR groups - sunny, medium, cloudy
+  # compute daytime PAR groups - cloudy, medium, sunny
   group_by(month(Timestamp)) %>% 
-  mutate(PAR_group = ntile(Daytime_PAR, 3)) %>% 
+  mutate(PAR_group = as.factor(ntile(Daytime_PAR, 3))) %>% 
   ungroup() %>% 
   select(-`month(Timestamp)`) ->  # no longer needed
   wx_dat
 ```
 
-TODO: diagnostic plots for weather data
+## Diagnostic plots for weather data
+
 ```{r, weather-qaqc}
+# Monthly averages by hour for each variable
+wx_dat %>% 
+  gather(var, value, PAR, Precip, RH, Tair) %>% 
+  mutate(Timestamp = with_tz(Timestamp, "EST"), 
+         month = month(Timestamp),
+         hour = hour(Timestamp)) %>% 
+  group_by(month, hour, var) %>% 
+  summarise(value = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(hour, value, color = month, group = month)) + 
+  geom_line() + facet_grid(var~., scales = "free")
+
+# Data by month for each variable, colored by day/night
+wx_dat %>% 
+  gather(var, value, PAR, Precip, RH, Tair) %>% 
+  mutate(Timestamp = with_tz(Timestamp, "EST"), 
+         daytime = Timestamp >= sunrise & Timestamp <= sunset,
+         month = month(Timestamp),
+         hour = hour(Timestamp)) %>% 
+  group_by(month, daytime, hour, var) %>% 
+  summarise(value = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(month, value, color = daytime, group = month)) + 
+  geom_jitter() + facet_grid(var~., scales = "free")
+
+# PAR versus PAR groups
 ggplot(wx_dat, aes(DOY, PAR)) + 
   geom_point(alpha = 0.2) + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
