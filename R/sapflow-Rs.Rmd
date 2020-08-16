@@ -461,7 +461,7 @@ full_sc %>%
   climate_data
 
 # fsd - find similar days for sunny_days (numeric vector)
-fsd <- function(sunny_days, climate_data, constraints, lookahead) {
+fsd <- function(sunny_days, climate_data, lookahead, constraints) {
   matches <- list()
   for(sd in sunny_days) {
     matches[[sd]] <- tibble(DOY = sd,
@@ -471,10 +471,53 @@ fsd <- function(sunny_days, climate_data, constraints, lookahead) {
 }
 ```
 
-```{r sc-compute, echo=FALSE, message=FALSE, warning=FALSE}
-constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "Precip" = 4, "RH" = 30, "Tair" = 15)
+## Similar_days sensitivty analysis
 
-fsd(sunny_days, climate_data, constraints, lookahead = 7) %>% 
+```{r sc-sensitivity, echo=FALSE}
+constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
+
+daycount <- function(constraints, lookahead = 20) {
+  suppressMessages(
+    nrow(fsd(sunny_days, climate_data, lookahead, constraints))
+  )
+}
+
+la_seq <- 1:20
+df1 <- tibble(variable = "lookahead",
+              value = la_seq,
+              daycount = sapply(la_seq, function(x) daycount(constraints, lookahead = x)))
+vpd_seq <- seq(0.01, 1, length.out = 20)
+df2 <- tibble(variable = "vpd",
+              value = vpd_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("VPD" = x))))
+t5_seq <- seq(0.1, 5, length.out = 20)
+df3 <- tibble(variable = "T5",
+              value = t5_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("T5" = x))))
+tair_seq <- seq(0.1, 5, length.out = 20)
+df4 <- tibble(variable = "Tair",
+              value = tair_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("Tair" = x))))
+sm_seq <- seq(0.05, 1, length.out = 20)
+df5 <- tibble(variable = "SM",
+              value = sm_seq,
+              daycount = sapply(sm_seq, function(x) daycount(constraints = c("SM" = x))))
+rh_seq <- seq(5, 50, length.out = 20)
+df6 <- tibble(variable = "RH",
+              value = rh_seq,
+              daycount = sapply(sm_seq, function(x) daycount(constraints = c("RH" = x))))
+
+bind_rows(df1, df2, df3, df4, df5, df6) %>% 
+  ggplot(aes(value, daycount)) + 
+  geom_line() +
+  xlab("Constraint value") + ylab("Number of matched days") +
+  facet_wrap(~variable, scales = "free")
+```
+
+
+
+```{r sc-compute, echo=FALSE, message=FALSE, warning=FALSE}
+fsd(sunny_days, climate_data, lookahead = 7, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
