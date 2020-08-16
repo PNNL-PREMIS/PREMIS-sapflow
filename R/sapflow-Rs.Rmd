@@ -86,19 +86,19 @@ read_csv("../SERC/con_licor_data_20191120.csv") %>%
 
 # Load weather data
 read_csv("../SERC/met_data/SECPRE_30min.csv") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime, tz = "EST")) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(Precip = secPrecipBulk) %>% 
   select(Timestamp, Precip) -> precip
 
 read_csv("../SERC/met_data/RH_30min.csv") %>% 
   filter(horizontalPosition == "000", verticalPosition == "060") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime, tz = "EST")) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(RH = RHMean, Tair = tempRHMean) %>% 
   select(Timestamp, RH, Tair) -> temprh
 
 read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
   filter(verticalPosition == "050") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime, tz = "EST")) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   select(Timestamp, PAR = PARMean) %>%
   left_join(precip, by = "Timestamp") %>% 
   left_join(temprh, by = "Timestamp") %>% 
