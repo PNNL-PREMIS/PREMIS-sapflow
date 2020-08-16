@@ -179,13 +179,16 @@ control_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js, na.rm = TRUE), VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
+  summarise(Js_avg = mean(Js, na.rm = TRUE), 
+            VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
 
 ####RESOLVE THIS 
 rs_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
-  summarise(rs_avg = mean(Flux), T5 = mean(T5, na.rm = TRUE), SM = mean(SMoist, na.rm = TRUE)) %>% 
+  summarise(rs_avg = mean(Flux), 
+            T5 = mean(T5, na.rm = TRUE), 
+            SM = mean(SMoist, na.rm = TRUE)) %>% 
   # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   ungroup() -> rs_filter
@@ -194,14 +197,15 @@ rs_long %>%
   filter(Flux > 0, Flux < 25, SMoist > 0) %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
-  summarise(rs_avg = mean(Flux), T5 = mean(T5), SM = mean(SMoist)) %>% 
+  summarise(rs_avg = mean(Flux), 
+            T5 = mean(T5), 
+            SM = mean(SMoist)) %>% 
   ungroup() -> rs_filter
 
 control_filter %>% 
   left_join(rs_filter) %>% 
   na.omit() %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
-  mutate(DOY = yday(Timestamp)) %>% 
   ungroup() %>% 
   complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> combined
 
@@ -209,28 +213,20 @@ control_filter %>%
 
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Species_code) %>% 
-  summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), 
-            DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
-            Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
-            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE),
-            SM = mean(SM, na.rm = TRUE), Tsoil = mean(T5, na.rm = TRUE)) %>% 
-  mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
+  group_by(Timestamp, PAR_group, Tree, Species_code) %>% 
+  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
+  ungroup() %>% 
+  mutate(Daytime = Hour > sunrise & Hour < sunset) %>% 
   left_join(species_codes) -> hourly
 #add SM and temp
-gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
+gather(hourly, key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
-  group_by(Date, Tree) %>% 
-  summarise(rs_daily = mean(rs_avg, na.rm = TRUE), Js_daily = mean(Js_avg, na.rm = TRUE), 
-            DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
-            Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
-            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE), 
-            SM = mean(SM, na.rm = TRUE), T5 = mean(T5, na.rm = TRUE)) %>% 
+  group_by(Date, Tree, PAR_group) %>% 
+  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
   ungroup() %>% 
-  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day"))-> daily
-
+  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) -> daily
 ```
 
 ```{r check-count, echo = FALSE}
