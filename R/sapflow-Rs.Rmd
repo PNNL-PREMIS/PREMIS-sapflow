@@ -518,7 +518,7 @@ bind_rows(df1, df2, df3, df4, df5, df6) %>%
 
 
 ```{r sc-compute, echo=FALSE, message=FALSE, warning=FALSE}
-fsd(sunny_days, climate_data, lookahead = 7, constraints) %>% 
+fsd(sunny_days, climate_data, lookahead = 14, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
