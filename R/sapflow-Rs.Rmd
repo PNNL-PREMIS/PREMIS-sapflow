@@ -102,7 +102,10 @@ read_csv("../SERC/met_data/PARPAR_30min.csv") %>%
   select(Timestamp, PAR = PARMean) %>%
   left_join(precip, by = "Timestamp") %>% 
   left_join(temprh, by = "Timestamp") %>% 
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
+  # At this point convert everything to EST for the rest of the analysis
+  # Note this doesn't change the times themselves, just associated time zone
+  mutate(Timestamp = with_tz(Timestamp, tzone = "EST"),
+         Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   group_by(Timestamp) %>% 
   summarise(PAR = mean(PAR), 
             Precip = mean(Precip), 
