@@ -22,6 +22,7 @@ library(readr)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+theme_set(theme_minimal())
 library(lubridate)
 library(viridis)
 library(wesanderson)
@@ -68,7 +69,7 @@ read_csv("../SERC/baseliner_data/control_Kest_yr.csv",
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
   separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
   separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
-  
+
 control_hm$Hour[control_hm$Hour == ""] <- 0
 
 control_hm %>% 
@@ -180,13 +181,16 @@ control_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js, na.rm = TRUE), VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
+  summarise(Js_avg = mean(Js, na.rm = TRUE), 
+            VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
 
 ####RESOLVE THIS 
 rs_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
-  summarise(rs_avg = mean(Flux), T5 = mean(T5, na.rm = TRUE), SM = mean(SMoist, na.rm = TRUE)) %>% 
+  summarise(rs_avg = mean(Flux), 
+            T5 = mean(T5, na.rm = TRUE), 
+            SM = mean(SMoist, na.rm = TRUE)) %>% 
   # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   ungroup() -> rs_filter
@@ -195,14 +199,15 @@ rs_long %>%
   filter(Flux > 0, Flux < 25, SMoist > 0) %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
-  summarise(rs_avg = mean(Flux), T5 = mean(T5), SM = mean(SMoist)) %>% 
+  summarise(rs_avg = mean(Flux), 
+            T5 = mean(T5), 
+            SM = mean(SMoist)) %>% 
   ungroup() -> rs_filter
 
 control_filter %>% 
   left_join(rs_filter) %>% 
   na.omit() %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
-  mutate(DOY = yday(Timestamp)) %>% 
   ungroup() %>% 
   complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> combined
 
@@ -210,28 +215,20 @@ control_filter %>%
 
 combined %>% 
   mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Species_code) %>% 
-  summarise(rs_havg = mean(rs_avg, na.rm = TRUE), Js_havg = mean(Js_avg, na.rm = TRUE), 
-            DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
-            Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
-            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE),
-            SM = mean(SM, na.rm = TRUE), Tsoil = mean(T5, na.rm = TRUE)) %>% 
-  mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
+  group_by(Timestamp, PAR_group, Tree, Species_code) %>% 
+  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
+  ungroup() %>% 
+  mutate(Daytime = Hour > sunrise & Hour < sunset) %>% 
   left_join(species_codes) -> hourly
 #add SM and temp
-gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
+gather(hourly, key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
-  group_by(Date, Tree) %>% 
-  summarise(rs_daily = mean(rs_avg, na.rm = TRUE), Js_daily = mean(Js_avg, na.rm = TRUE), 
-            DOY = mean(DOY, na.rm = TRUE), PAR = mean(PAR, na.rm = TRUE), 
-            Precip = mean(Precip, na.rm = TRUE), VPD = mean(VPD_avg, na.rm = TRUE),
-            RH = mean(RH, na.rm = TRUE), Tair = mean(Tair, na.rm = TRUE), 
-            SM = mean(SM, na.rm = TRUE), T5 = mean(T5, na.rm = TRUE)) %>% 
+  group_by(Date, Tree, PAR_group) %>% 
+  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
   ungroup() %>% 
-  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day"))-> daily
-
+  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) -> daily
 ```
 
 ```{r check-count, echo = FALSE}
@@ -242,8 +239,7 @@ log_obs(rs_filter, "2")
 log_obs(combined, "3")
 
 ggplot(obs_count_data, aes(x = step, y = n, colour = Tree, group = Tree)) + 
-  geom_line() +
-  theme_minimal() -> rs_counts
+  geom_line() -> rs_counts
 
 # Check Js counts
 tree_names <- c("C3", "C6", "C7", "C8")
@@ -253,26 +249,26 @@ log_obs(control_long, "1")
 log_obs(control_filter, "2")
 log_obs(combined, "3")
 
-ggplot(filter(obs_count_data, Tree %in% tree_names), aes(x = step, y = n, color = Tree, group = Tree)) + 
-  geom_line() +
-  theme_minimal() -> js_counts
-
+obs_count_data %>% 
+  filter(Tree %in% tree_names) %>% 
+  ggplot(aes(x = step, y = n, color = Tree, group = Tree)) + 
+  geom_line() -> js_counts
 ```
 
 ```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
 rs_max <- 11
 
-hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
+hourly_long[which(hourly_long$Type == "Js_avg"), ] -> x
 
 hourly_long %>% 
   ungroup %>% 
-  filter(Type == "Js_havg") %>% 
+  filter(Type == "Js_avg") %>% 
   select(-Value) %>% 
-  mutate(Value  = (rs_max - rs_min) * ((x$Value - min(x$Value))/(max(x$Value) - min(x$Value))) + rs_min) -> hourly_check
+  mutate(Value  = (rs_max - rs_min) * ((x$Value - min(x$Value)) / (max(x$Value) - min(x$Value))) + rs_min) -> hourly_check
 
 hourly_long %>% 
-  filter(Type == "rs_havg") %>% 
+  filter(Type == "rs_avg") %>% 
   bind_rows(hourly_check) -> hourly_norm
 
 ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)) +
@@ -285,13 +281,12 @@ ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)
                       labels = c("Js", "Rs")) +
   labs(x = "Hour of Day", y = "Value") +
   facet_wrap(~Species) + 
-  theme_minimal() +
   theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
-  
+
 ```
 
 ```{r rs-js plot, echo = FALSE, message = FALSE}
-ggplot(hourly, aes(x = Js_havg, rs_havg)) +
+ggplot(hourly, aes(x = Js_avg, rs_avg)) +
   geom_point(aes(color = Daytime)) +
   geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
   scale_color_viridis(discrete = TRUE,
@@ -300,8 +295,7 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
   scale_fill_viridis(discrete = TRUE,
                      name = "Time of Day",
                      labels = c("Nighttime", "Daytime")) +
-  labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
-  theme_minimal()
+  labs(x = "Js (m/s)", y = "Rs (umol/m/s)")
 
 ```
 
@@ -329,17 +323,17 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
 
 ## Plot
 #ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) + 
-  # geom_point() +
-  # scale_color_viridis(discrete = TRUE,
-  #                     name = "Time of Day",
-  #                     labels = c("Nighttime", "Daytime")) +
-  # annotate("text", x = 10, y = 21.5, 
-  #          label = paste("Q10 =", round(exp(10 ^ model_d$coefficients[2]), digits = 3)), 
-  #          color = "#FDE725FF") +
-  # annotate("text", x = 10, y = 20, 
-  #         label = paste("Q10=", round(exp(10 ^ model_n$coefficients[2]), digits = 3)), 
-  #         color = "#440154FF") +
-  # theme_minimal()
+# geom_point() +
+# scale_color_viridis(discrete = TRUE,
+#                     name = "Time of Day",
+#                     labels = c("Nighttime", "Daytime")) +
+# annotate("text", x = 10, y = 21.5, 
+#          label = paste("Q10 =", round(exp(10 ^ model_d$coefficients[2]), digits = 3)), 
+#          color = "#FDE725FF") +
+# annotate("text", x = 10, y = 20, 
+#         label = paste("Q10=", round(exp(10 ^ model_n$coefficients[2]), digits = 3)), 
+#         color = "#440154FF") +
+# theme_minimal()
 
 ```
 
@@ -347,13 +341,11 @@ ggplot(hourly, aes(x = Js_havg, rs_havg)) +
 
 ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
   geom_line() + 
-  facet_wrap(~Tree, scales = "free", ncol = 2) +
-  theme_minimal()
+  facet_wrap(~Tree, scales = "free", ncol = 2)
 
 ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
   geom_line() +
-  facet_wrap(~Tree, scales = "free") +
-  theme_minimal()
+  facet_wrap(~Tree, scales = "free")
 
 ```
 
@@ -382,18 +374,21 @@ We expect there to be differences in peak lag and correlation between the two sp
 
 ```{r q1, echo = FALSE}
 
-full %>%
+combined %>%
   group_by(Tree) %>%
-  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> q1
+  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q1
 
-ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line() + theme_minimal()
+ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
 
 q1 %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   select(Tree, Species_code, Hour, Cor) %>% 
   group_by(Tree) %>% 
-  summarise(`Species` = Species_code[which.max(Cor)], `Hour Lag` = Hour[which.max(Cor)], `Maximum Correlation` = max(Cor)) %>% 
-  kable("html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+  summarise(`Species` = Species_code[which.max(Cor)], 
+            `Hour Lag` = Hour[which.max(Cor)], 
+            `Maximum Correlation` = max(Cor)) %>% 
+  kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 
 ```
 
@@ -431,7 +426,6 @@ bind_rows(q2_list, .id = "Week") %>% na.omit() -> q2
 ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
-  theme_minimal() + 
   geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu")
 
@@ -444,60 +438,88 @@ If H1.1 is correct, then days with more sunlight would have a stronger correlati
 
 To examine this issue, we look at matched days, i.e. that are in the same part of the growing season and have similar conditions EXCEPT for sunlight.
 
-**Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are tested the important of PAR on the relationship.
+**Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are testing the important of PAR on the relationship.
 
 - Rs, Js, and climate variables parsed to same timescale
 - Data separated into **sunny days** (top 1/3 PAR) and **cloudy days** (bottom 1/3 PAR)
 - Just the matched days, how do the max-cor-lags differ between them?
 - Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
 
+```{r sc-setup, echo=FALSE, message=FALSE, warning=FALSE}
 
-```{r sunny-cloudy, echo=FALSE, message=FALSE, warning=FALSE, include=}
+# Take full dataset and split into groups based on PAR
+daily %>% 
+  filter(!is.na(PAR_group)) %>% 
+  mutate(Coverage = c("Cloudy", "Medium", "Sunny")[PAR_group]) -> full_sc
 
-#Take full dataset and split into groups based on PAR
-combined %>% 
-  ungroup %>% 
-  mutate(PAR_group = ntile(PAR, 3)) %>% 
-  filter(PAR_group == "1" | PAR_group == "3") %>% 
-  mutate(Coverage = ifelse(PAR_group == "3", "Sunny", "Cloudy")) -> full_sc
+sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique()
+cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique()
 
-# Filter for sunlight and split into terciles 
-daily %>%
-  left_join(sunlight_times, by = c("Date" = "date")) %>% 
-  filter() %>% # NEED TO FILTER OUT NIGHT
-  mutate(group = ntile(PAR, 3)) -> PAR_groups #ntile should be using DAYTIME par values
-
-pal <- (wes_palette(name = "Zissou1", 3, type = "continuous"))
-
-ggplot(PAR_groups, aes(x = group, y = log(PAR), color = as.factor(group))) + 
-  geom_jitter() + 
-  ggtitle("PAR") + 
-  scale_colour_manual(values = pal, name = "Tercile") + 
-  theme_minimal()
-
-sunny <- filter(PAR_groups, group == "3") %>% select(DOY)
-cloudy <- filter(PAR_groups, group == "1") %>% select(DOY)
-
-combined %>% 
-  ungroup() %>% 
-  select(DOY, VPD_avg, T5, SM, Precip, RH, Tair) %>% 
+full_sc %>% 
+  select(DOY, VPD = VPD_avg, T5, SM, Precip, RH, Tair) %>% 
   group_by(DOY) %>% 
-  summarise(VPD = mean(VPD_avg), T5 = mean(T5), SM = mean(SM),
-            Precip = mean(Precip), RH = mean(RH, na.rm = T), Tair = mean(Tair, na.rm = T)) -> climate_data
+  summarise_all(mean, na.rm = TRUE) ->
+  climate_data
 
-constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "Precip" = 4, "RH" = 30, "Tair" = 15)
+# fsd - find similar days for sunny_days (numeric vector)
+fsd <- function(sunny_days, climate_data, lookahead, constraints) {
+  matches <- list()
+  for(sd in sunny_days) {
+    matches[[sd]] <- tibble(DOY = sd,
+                            Similar_Day = similar_days(sd, climate_data, lookahead, constraints))
+  }
+  bind_rows(matches)
+}
+```
 
-matches <- list()
+## Similar_days sensitivty analysis
 
-for(i in 1:nrow(daily)) {
-  matches[[i]] <- tibble(DOY = daily$DOY[i], Similar_Day = similar_days(daily$DOY[i], climate_data, lookahead = 7, constraints))
+```{r sc-sensitivity, echo=FALSE}
+constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
+
+daycount <- function(constraints, lookahead = 20) {
+  suppressMessages(
+    nrow(fsd(sunny_days, climate_data, lookahead, constraints))
+  )
 }
 
-bind_rows(matches) -> matches_df
+la_seq <- 1:20
+df1 <- tibble(variable = "lookahead",
+              value = la_seq,
+              daycount = sapply(la_seq, function(x) daycount(constraints, lookahead = x)))
+vpd_seq <- seq(0.01, 1, length.out = 20)
+df2 <- tibble(variable = "vpd",
+              value = vpd_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("VPD" = x))))
+t5_seq <- seq(0.1, 5, length.out = 20)
+df3 <- tibble(variable = "T5",
+              value = t5_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("T5" = x))))
+tair_seq <- seq(0.1, 5, length.out = 20)
+df4 <- tibble(variable = "Tair",
+              value = tair_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("Tair" = x))))
+sm_seq <- seq(0.05, 1, length.out = 20)
+df5 <- tibble(variable = "SM",
+              value = sm_seq,
+              daycount = sapply(sm_seq, function(x) daycount(constraints = c("SM" = x))))
+rh_seq <- seq(5, 50, length.out = 20)
+df6 <- tibble(variable = "RH",
+              value = rh_seq,
+              daycount = sapply(sm_seq, function(x) daycount(constraints = c("RH" = x))))
 
-matches_df %>% 
-  filter(DOY %in% sunny$DOY) %>% 
-  filter(Similar_Day %in% cloudy$DOY) %>% 
+bind_rows(df1, df2, df3, df4, df5, df6) %>% 
+  ggplot(aes(value, daycount)) + 
+  geom_line() +
+  xlab("Constraint value") + ylab("Number of matched days") +
+  facet_wrap(~variable, scales = "free")
+```
+
+
+
+```{r sc-compute, echo=FALSE, message=FALSE, warning=FALSE}
+fsd(sunny_days, climate_data, lookahead = 7, constraints) %>% 
+  filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
 left_join(matched_DOY, combined, by = c("Cloudy_DOY" = "DOY")) %>%
@@ -510,20 +532,19 @@ left_join(matched_DOY, combined, by = c("Sunny_DOY" = "DOY")) %>%
   select(-Cloudy_DOY) -> sunny_complete
 
 bind_rows(cloudy_complete, sunny_complete) -> matches_data
-
 ```
+
 
 ```{r q3a, echo = FALSE}
 # Lag over whole growing season by sunny vs. cloudy
 # should be using DAILY PAR FOR THIS!!!!!!!!!!!!
 full_sc %>%
   group_by(Tree, Coverage) %>% na.omit() %>% 
-  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> q3a
+  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q3a
 
 ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
   geom_line() +
-  facet_wrap(~Tree) +
-  theme_minimal()
+  facet_wrap(~Tree)
 
 ```
 
@@ -567,9 +588,8 @@ ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) +
            label = paste("Q10 =", round(exp(10 ^ model_s$coefficients[2]), digits = 3)), 
            color = "#FDE725FF") +
   annotate("text", x = 10, y = 20, 
-          label = paste("Q10=", round(exp(10 ^ model_c$coefficients[2]), digits = 3)), 
-          color = "#440154FF") +
-  theme_minimal()
+           label = paste("Q10=", round(exp(10 ^ model_c$coefficients[2]), digits = 3)), 
+           color = "#440154FF")
 
 ```
 
