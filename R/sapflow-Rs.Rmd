@@ -206,7 +206,6 @@ rs_long %>%
 
 control_filter %>% 
   left_join(rs_filter) %>% 
-  na.omit() %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
   ungroup() %>% 
   complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> combined
