@@ -563,7 +563,7 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 ```{r q10-sunny-cloudy, echo = FALSE, message = FALSE}
 
 ## Sunny Q10
-sunny <- filter(matches_data, Coverage == "Sunny")
+sunny <- filter(matches_data, Coverage == "Sunny", !is.na(T5), !is.na(rs_avg))
 model_s <- lm(log(rs_avg) ~ T5, data = sunny)
 sunny$prediction <- exp(predict(model_s))
 # ggplot(daytime, aes(x = T5, y = rs_avg)) + 
@@ -572,7 +572,7 @@ sunny$prediction <- exp(predict(model_s))
 # cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
 
 ## Cloudy Q10
-cloudy <- filter(matches_data, Coverage == "Cloudy")
+cloudy <- filter(matches_data, Coverage == "Cloudy", !is.na(T5), !is.na(rs_avg))
 model_c <- lm(log(rs_avg) ~ T5, data = cloudy)
 cloudy$prediction <- exp(predict(model_c))
 # ggplot(nighttime, aes(x = T5, y = rs_avg)) + 
