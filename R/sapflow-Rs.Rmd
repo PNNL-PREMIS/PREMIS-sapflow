@@ -349,12 +349,36 @@ ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
 
 ```
 
-```{r q0b, echo = FALSE}
-# PACF temporal characteristics 
+```{r pacf, echo = FALSE}
+# The partial autocorrelation function gives the partial correlation (i.e. after
+# controlling for other variables, or in this case, time lags) of a stationary
+# time series with its own lagged values.
 
-pacf(combined$rs_avg, na.action = na.pass)
-pacf(combined$Js_avg, na.action = na.pass)
+# Average across chambers and trees for each timestamp
+combined %>% 
+  group_by(Timestamp) %>% 
+  summarise(rs_avg = mean(rs_avg, na.rm = TRUE),
+            Js_avg = mean(Js_avg, na.rm = TRUE)) %>% 
+  arrange(Timestamp) ->
+  combined_pacf
 
+# Prerequisite: the time series shouldn't have any gaps
+timediffs <- diff(combined_pacf$Timestamp)
+if(all(duplicated(timediffs)[-1])) {
+  title <- ""
+} else {
+  title <- "*** WARNING *** 'combined' has gaps or\ninconsistent difftimes"
+}
+
+pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE)
+pacf_js <- pacf(combined_pacf$Js_avg, na.action = na.pass, plot = FALSE)
+pacf_rs <- tibble(which = "R[S]", lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
+pacf_js <- tibble(which = "J[S]", lag = pacf_js$lag[,,1], PACF = pacf_js$acf[,,1])
+bind_rows(pacf_js, pacf_rs) %>% 
+  ggplot(aes(lag, PACF, fill = which)) + geom_col(position = "dodge") +
+  xlim(c(0, 23)) +
+  scale_fill_discrete("") +
+  ggtitle(title)
 ```
 
 ## Science Questions.
@@ -551,9 +575,9 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 ```{r q3b, echo = FALSE, message = FALSE}
 # Plot of sunny DOYs with cloudy DOYs
 
-# ggplot(matches_data, aes(x = hour(Timestamp), y = Js_avg, color = Coverage, group = DOY)) + 
-#   geom_point() + geom_line() +  
-#   facet_wrap(Tree~Group_No, scales = "free") + theme_minimal()
+ggplot(matches_data, aes(x = hour(Timestamp), y = Js_avg, color = Coverage, group = DOY)) + 
+  geom_point() + geom_line() +  
+  facet_wrap(Tree~Group_No, scales = "free")
 # 
 # ggplot(matches_data, aes(x = hour(Timestamp), y = rs_avg, color = Coverage, group = DOY)) + 
 #   geom_point() + geom_line() + 
