@@ -72,7 +72,7 @@ read_csv("../SERC/baseliner_data/control_Kest_yr.csv",
 control_hm$Hour[control_hm$Hour == ""] <- 0
 
 control_hm %>% 
-  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
+  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
@@ -80,47 +80,91 @@ control_hm %>%
 
 ##check where licor data is coming from 
 read_csv("../SERC/con_licor_data_20191120.csv") %>%
+  mutate(Timestamp = force_tz(Timestamp, tz = "EST")) %>% 
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
 # Load weather data
 read_csv("../SERC/met_data/SECPRE_30min.csv") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime)) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(Precip = secPrecipBulk) %>% 
   select(Timestamp, Precip) -> precip
 
 read_csv("../SERC/met_data/RH_30min.csv") %>% 
   filter(horizontalPosition == "000", verticalPosition == "060") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime)) %>% 
+  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(RH = RHMean, Tair = tempRHMean) %>% 
   select(Timestamp, RH, Tair) -> temprh
 
 read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime), DOY = yday(Timestamp), Date = date(Timestamp)) %>% 
-  rename(PAR = PARMean) %>% 
   filter(verticalPosition == "050") %>% 
-  select(Timestamp, DOY, PAR, Date) %>%
+  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
+  select(Timestamp, PAR = PARMean) %>%
   left_join(precip, by = "Timestamp") %>% 
   left_join(temprh, by = "Timestamp") %>% 
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
+  # At this point convert everything to EST for the rest of the analysis
+  # Note this doesn't change the times themselves, just associated time zone
+  mutate(Timestamp = with_tz(Timestamp, tzone = "EST"),
+         Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   group_by(Timestamp) %>% 
-  summarise(DOY = mean(DOY), PAR = mean(PAR), 
-            Precip = mean(Precip), RH = mean(RH), Tair = mean(Tair), Date = mean(Date)) -> wx_dat
+  summarise(PAR = mean(PAR), 
+            Precip = mean(Precip), 
+            RH = mean(RH),
+            Tair = mean(Tair)) %>% 
+  mutate(DOY = yday(Timestamp), 
+         Date = date(Timestamp)) -> wx_dat_no_dpar
 
 # Compute daytime PAR as a new column
-# To split PAR groups, we need to use daily averages of daytime values
-sunlight_times <- getSunlightTimes(wx_dat$Date, lat = 38.9, lon = -77, tz = "UTC", keep = c("sunrise", "sunset"))
+sunlight_times <- getSunlightTimes(wx_dat_no_dpar$Date,
+                                   lat = 38.9, lon = -77, tz = "EST", 
+                                   keep = c("sunrise", "sunset"))
+wx_dat_no_dpar$sunrise <- sunlight_times$sunrise
+wx_dat_no_dpar$sunset <- sunlight_times$sunset
 
-wx_dat$sunrise <- sunlight_times$sunrise
-wx_dat$sunset <- sunlight_times$sunset
-# Check time zones before this step
-wx_dat %>% 
-  filter(Timestamp >= sunrise, Timestamp <= sunset) %>% 
+wx_dat_no_dpar %>% 
+  filter(Timestamp >= sunrise, Timestamp <= sunset) %>%   # daytime only
   group_by(DOY) %>% 
   summarise(Daytime_PAR = mean(PAR, na.rm = TRUE)) %>% 
-  right_join(wx_dat, by = "DOY")-> x
-
+  # we've computed mean *daytime* PAR; now merge back in
+  right_join(wx_dat_no_dpar, by = "DOY") %>% 
+  # compute daytime PAR groups - cloudy, medium, sunny
+  group_by(month(Timestamp)) %>% 
+  mutate(PAR_group = as.factor(ntile(Daytime_PAR, 3))) %>% 
+  ungroup() %>% 
+  select(-`month(Timestamp)`) ->  # no longer needed
+  wx_dat
 ```
+
+## Diagnostic plots for weather data
+
+```{r, weather-qaqc}
+# Monthly averages by hour for each variable
+wx_dat %>% 
+  gather(var, value, PAR, Precip, RH, Tair) %>% 
+  mutate(month = month(Timestamp),
+         hour = hour(Timestamp)) %>% 
+  group_by(month, hour, var) %>% 
+  summarise(value = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(hour, value, color = month, group = month)) + 
+  geom_line() + facet_grid(var~., scales = "free")
+
+# Data by month for each variable, colored by day/night
+wx_dat %>% 
+  gather(var, value, PAR, Precip, RH, Tair) %>% 
+  mutate(daytime = Timestamp >= sunrise & Timestamp <= sunset,
+         month = month(Timestamp),
+         hour = hour(Timestamp)) %>% 
+  group_by(month, daytime, hour, var) %>% 
+  summarise(value = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(month, value, color = daytime, group = month)) + 
+  geom_jitter() + facet_grid(var~., scales = "free")
+
+# PAR versus PAR groups
+ggplot(wx_dat, aes(DOY, PAR)) + 
+  geom_point(alpha = 0.2) + 
+  geom_point(aes(y = Daytime_PAR, color = PAR_group))
+```
+
 
 ```{r data-cleaning, echo = FALSE, message = FALSE}
 # Next, we need to filter for the Js trees that also have Rs measurements
