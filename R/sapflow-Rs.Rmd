@@ -37,7 +37,8 @@ log_obs <- function(d, step_name) {
   d %>% 
     ungroup() %>% 
     group_by(Tree) %>% 
-    summarise(n = n()) %>% 
+    summarise(n = n(),
+            .groups = "drop") %>% 
     mutate(step = step_name) %>% 
     bind_rows(obs_count_data) ->> obs_count_data
 }
@@ -111,7 +112,8 @@ read_csv("../SERC/met_data/PARPAR_30min.csv") %>%
   summarise(PAR = mean(PAR), 
             Precip = mean(Precip), 
             RH = mean(RH),
-            Tair = mean(Tair)) %>% 
+            Tair = mean(Tair),
+            .groups = "drop") %>% 
   mutate(DOY = yday(Timestamp), 
          Date = date(Timestamp)) -> wx_dat_no_dpar
 
@@ -125,7 +127,8 @@ wx_dat_no_dpar$sunset <- sunlight_times$sunset
 wx_dat_no_dpar %>% 
   filter(Timestamp >= sunrise, Timestamp <= sunset) %>%   # daytime only
   group_by(DOY) %>% 
-  summarise(Daytime_PAR = mean(PAR, na.rm = TRUE)) %>% 
+  summarise(Daytime_PAR = mean(PAR, na.rm = TRUE),
+            .groups = "drop") %>% 
   # we've computed mean *daytime* PAR; now merge back in
   right_join(wx_dat_no_dpar, by = "DOY") %>% 
   # compute daytime PAR groups - cloudy, medium, sunny
@@ -145,7 +148,8 @@ wx_dat %>%
   mutate(month = month(Timestamp),
          hour = hour(Timestamp)) %>% 
   group_by(month, hour, var) %>% 
-  summarise(value = mean(value, na.rm = TRUE)) %>%
+  summarise(value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>%
   ggplot(aes(hour, value, color = month, group = month)) + 
   geom_line() + facet_grid(var~., scales = "free")
 
@@ -156,7 +160,8 @@ wx_dat %>%
          month = month(Timestamp),
          hour = hour(Timestamp)) %>% 
   group_by(month, daytime, hour, var) %>% 
-  summarise(value = mean(value, na.rm = TRUE)) %>%
+  summarise(value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>%
   ggplot(aes(month, value, color = daytime, group = month)) + 
   geom_jitter() + facet_grid(var~., scales = "free")
 
@@ -182,7 +187,8 @@ control_long %>%
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE), 
-            VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
+            VPD_avg = mean(VPD, na.rm = TRUE),
+            .groups = "drop") -> control_filter
 
 ####RESOLVE THIS 
 rs_long %>%
@@ -190,7 +196,8 @@ rs_long %>%
   group_by(Timestamp, Tree, Species_code) %>%
   summarise(rs_avg = mean(Flux), 
             T5 = mean(T5, na.rm = TRUE), 
-            SM = mean(SMoist, na.rm = TRUE)) %>% 
+            SM = mean(SMoist, na.rm = TRUE),
+            .groups = "drop") %>% 
   # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   ungroup() -> rs_filter
@@ -201,7 +208,8 @@ rs_long %>%
   group_by(Timestamp, Tree, Species_code) %>%
   summarise(rs_avg = mean(Flux), 
             T5 = mean(T5), 
-            SM = mean(SMoist)) %>% 
+            SM = mean(SMoist),
+            .groups = "drop") %>% 
   ungroup() -> rs_filter
 
 control_filter %>% 
@@ -386,7 +394,8 @@ q1 %>%
   group_by(Tree) %>% 
   summarise(`Species` = Species_code[which.max(Cor)], 
             `Hour Lag` = Hour[which.max(Cor)], 
-            `Maximum Correlation` = max(Cor)) %>% 
+            `Maximum Correlation` = max(Cor),
+            .groups = "drop") %>% 
   kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 
