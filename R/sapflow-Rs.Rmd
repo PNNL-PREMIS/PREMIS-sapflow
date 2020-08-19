@@ -37,7 +37,8 @@ log_obs <- function(d, step_name) {
   d %>% 
     ungroup() %>% 
     group_by(Tree) %>% 
-    summarise(n = n()) %>% 
+    summarise(n = n(),
+              .groups = "drop") %>% 
     mutate(step = step_name) %>% 
     bind_rows(obs_count_data) ->> obs_count_data
 }
@@ -60,12 +61,15 @@ compute_lag_cor <- function(rs, js, hour_range) {
 
 ```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
 # Load in Rs, K, weather, and inventory data
-inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv")
-ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
-species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv")
+inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv",
+                      col_types = "ccddccccdcccc")
+ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv", col_types = "dc")
+species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv",
+                          col_types = "ccc")
 
 read_csv("../SERC/baseliner_data/control_Kest_yr.csv", 
-         col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
+         col_names = c("Year", "DOY","Time","VPD", "PAR", paste0("C", 1:8)),
+         col_types = strrep("d", 13)) %>% 
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
   separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
   separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
@@ -73,31 +77,35 @@ read_csv("../SERC/baseliner_data/control_Kest_yr.csv",
 control_hm$Hour[control_hm$Hour == ""] <- 0
 
 control_hm %>% 
-  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min), tz = "EST")) %>%
+  mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
 
 ##check where licor data is coming from 
-read_csv("../SERC/con_licor_data_20191120.csv") %>%
+read_csv("../SERC/con_licor_data_20191120.csv",
+         col_types = "dTcddddddddddc") %>%
   mutate(Timestamp = force_tz(Timestamp, tz = "EST")) %>% 
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
 # Load weather data
-read_csv("../SERC/met_data/SECPRE_30min.csv") %>% 
+read_csv("../SERC/met_data/SECPRE_30min.csv",
+         col_types = "ccddTTddddT") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(Precip = secPrecipBulk) %>% 
   select(Timestamp, Precip) -> precip
 
-read_csv("../SERC/met_data/RH_30min.csv") %>% 
+read_csv("../SERC/met_data/RH_30min.csv", 
+         col_types = paste0("ccccTT", strrep("d", 24), "T")) %>% 
   filter(horizontalPosition == "000", verticalPosition == "060") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(RH = RHMean, Tair = tempRHMean) %>% 
   select(Timestamp, RH, Tair) -> temprh
 
-read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
+read_csv("../SERC/met_data/PARPAR_30min.csv",
+         col_types = paste0("ccccTT", strrep("d", 16), "T")) %>% 
   filter(verticalPosition == "050") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   select(Timestamp, PAR = PARMean) %>%
@@ -111,7 +119,8 @@ read_csv("../SERC/met_data/PARPAR_30min.csv") %>%
   summarise(PAR = mean(PAR), 
             Precip = mean(Precip), 
             RH = mean(RH),
-            Tair = mean(Tair)) %>% 
+            Tair = mean(Tair),
+            .groups = "drop") %>% 
   mutate(DOY = yday(Timestamp), 
          Date = date(Timestamp)) -> wx_dat_no_dpar
 
@@ -125,7 +134,8 @@ wx_dat_no_dpar$sunset <- sunlight_times$sunset
 wx_dat_no_dpar %>% 
   filter(Timestamp >= sunrise, Timestamp <= sunset) %>%   # daytime only
   group_by(DOY) %>% 
-  summarise(Daytime_PAR = mean(PAR, na.rm = TRUE)) %>% 
+  summarise(Daytime_PAR = mean(PAR, na.rm = TRUE),
+            .groups = "drop") %>% 
   # we've computed mean *daytime* PAR; now merge back in
   right_join(wx_dat_no_dpar, by = "DOY") %>% 
   # compute daytime PAR groups - cloudy, medium, sunny
@@ -145,7 +155,8 @@ wx_dat %>%
   mutate(month = month(Timestamp),
          hour = hour(Timestamp)) %>% 
   group_by(month, hour, var) %>% 
-  summarise(value = mean(value, na.rm = TRUE)) %>%
+  summarise(value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>%
   ggplot(aes(hour, value, color = month, group = month)) + 
   geom_line() + facet_grid(var~., scales = "free")
 
@@ -156,7 +167,8 @@ wx_dat %>%
          month = month(Timestamp),
          hour = hour(Timestamp)) %>% 
   group_by(month, daytime, hour, var) %>% 
-  summarise(value = mean(value, na.rm = TRUE)) %>%
+  summarise(value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>%
   ggplot(aes(month, value, color = daytime, group = month)) + 
   geom_jitter() + facet_grid(var~., scales = "free")
 
@@ -182,7 +194,8 @@ control_long %>%
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE), 
-            VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
+            VPD_avg = mean(VPD, na.rm = TRUE),
+            .groups = "drop") -> control_filter
 
 ####RESOLVE THIS 
 rs_long %>%
@@ -190,7 +203,8 @@ rs_long %>%
   group_by(Timestamp, Tree, Species_code) %>%
   summarise(rs_avg = mean(Flux), 
             T5 = mean(T5, na.rm = TRUE), 
-            SM = mean(SMoist, na.rm = TRUE)) %>% 
+            SM = mean(SMoist, na.rm = TRUE),
+            .groups = "drop") %>% 
   # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   ungroup() -> rs_filter
@@ -201,7 +215,8 @@ rs_long %>%
   group_by(Timestamp, Tree, Species_code) %>%
   summarise(rs_avg = mean(Flux), 
             T5 = mean(T5), 
-            SM = mean(SMoist)) %>% 
+            SM = mean(SMoist),
+            .groups = "drop") %>% 
   ungroup() -> rs_filter
 
 control_filter %>% 
@@ -409,7 +424,8 @@ q1 %>%
   group_by(Tree) %>% 
   summarise(`Species` = Species_code[which.max(Cor)], 
             `Hour Lag` = Hour[which.max(Cor)], 
-            `Maximum Correlation` = max(Cor)) %>% 
+            `Maximum Correlation` = max(Cor),
+            .groups = "drop") %>% 
   kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 
@@ -461,7 +477,7 @@ If H1.1 is correct, then days with more sunlight would have a stronger correlati
 
 To examine this issue, we look at matched days, i.e. that are in the same part of the growing season and have similar conditions EXCEPT for sunlight.
 
-**Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are testing the important of PAR on the relationship.
+**Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are testing the importance of PAR on the relationship.
 
 - Rs, Js, and climate variables parsed to same timescale
 - Data separated into **sunny days** (top 1/3 PAR) and **cloudy days** (bottom 1/3 PAR)
@@ -555,6 +571,21 @@ left_join(matched_DOY, combined, by = c("Sunny_DOY" = "DOY")) %>%
   select(-Cloudy_DOY) -> sunny_complete
 
 bind_rows(cloudy_complete, sunny_complete) -> matches_data
+
+# We're can only use sunny-day-groups with data in them. Compute this
+matches_data %>% 
+  # for each group and sunny/cloudy, how many observations?
+  group_by(Group_No, Coverage) %>% 
+  summarise(Js_N = sum(is.finite(Js_avg)),
+            Rs_N = sum(is.finite(rs_avg)),
+            .groups = "drop_last") %>%
+  # which groups have sunny AND cloudy data available (six or more)?
+  summarise(Js_suncloud_avail = all(Js_N > 5),
+            Rs_suncloud_avail = all(Rs_N > 5),
+            .groups = "drop") %>% 
+  right_join(matches_data, by = "Group_No") %>% 
+  filter(!is.na(Tree)) ->
+  matches_data
 ```
 
 
@@ -574,13 +605,37 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 ```{r q3b, echo = FALSE, message = FALSE}
 # Plot of sunny DOYs with cloudy DOYs
 
-ggplot(matches_data, aes(x = hour(Timestamp), y = Js_avg, color = Coverage, group = DOY)) + 
-  geom_point() + geom_line() +  
-  facet_wrap(Tree~Group_No, scales = "free")
-# 
-# ggplot(matches_data, aes(x = hour(Timestamp), y = rs_avg, color = Coverage, group = DOY)) + 
-#   geom_point() + geom_line() + 
-#   facet_wrap(Tree~Group_No, scales = "free") + theme_minimal()
+matches_data %>% 
+  filter(Js_suncloud_avail) %>% 
+  ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +
+  geom_point() + 
+  geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
+  facet_grid(Group_No~Tree, scales = "free")
+
+matches_data %>% 
+  filter(Rs_suncloud_avail) %>% 
+  ggplot(aes(x = hour(Timestamp), y = rs_avg, color = Coverage)) +
+  geom_point() + 
+  geom_line(aes(group = paste(DOY, Coverage, Tree))) +
+  facet_grid(Group_No~Tree, scales = "free")
+
+# Boxplots: sunny versus cloudy days
+ggplot(matches_data, aes(Tree, Js_avg, color = Coverage)) + 
+  geom_boxplot() + 
+  facet_wrap(~Tree, scales = "free")
+ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) + 
+  geom_boxplot() + 
+  facet_wrap(~Tree, scales = "free")
+
+# Lags, sunny days versus cloudy
+matches_data %>% 
+  arrange(Timestamp) %>% 
+  group_by(Tree, Coverage, DOY) %>% 
+  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 13))) %>% 
+  ggplot(aes(Hour, Cor, color = Coverage, group = paste(Coverage, DOY))) + 
+  geom_line() + 
+  facet_wrap(~Tree) +
+  ggtitle("Each line is a day")
 ```
 
 ```{r q10-sunny-cloudy, echo = FALSE, message = FALSE}
