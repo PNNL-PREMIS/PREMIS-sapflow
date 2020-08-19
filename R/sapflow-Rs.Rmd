@@ -61,12 +61,15 @@ compute_lag_cor <- function(rs, js, hour_range) {
 
 ```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
 # Load in Rs, K, weather, and inventory data
-inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv")
-ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
-species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv")
+inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv",
+                      col_types = "ccddccccdcccc")
+ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv", col_types = "dc")
+species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv",
+                          col_types = "ccc")
 
 read_csv("../SERC/baseliner_data/control_Kest_yr.csv", 
-         col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
+         col_names = c("Year", "DOY","Time","VPD", "PAR", paste0("C", 1:8)),
+         col_types = strrep("d", 13)) %>% 
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
   separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
   separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
@@ -74,31 +77,35 @@ read_csv("../SERC/baseliner_data/control_Kest_yr.csv",
 control_hm$Hour[control_hm$Hour == ""] <- 0
 
 control_hm %>% 
-  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min), tz = "EST")) %>%
+  mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
 
 ##check where licor data is coming from 
-read_csv("../SERC/con_licor_data_20191120.csv") %>%
+read_csv("../SERC/con_licor_data_20191120.csv",
+         col_types = "dTcddddddddddc") %>%
   mutate(Timestamp = force_tz(Timestamp, tz = "EST")) %>% 
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
 # Load weather data
-read_csv("../SERC/met_data/SECPRE_30min.csv") %>% 
+read_csv("../SERC/met_data/SECPRE_30min.csv",
+         col_types = "ccddTTddddT") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(Precip = secPrecipBulk) %>% 
   select(Timestamp, Precip) -> precip
 
-read_csv("../SERC/met_data/RH_30min.csv") %>% 
+read_csv("../SERC/met_data/RH_30min.csv", 
+         col_types = paste0("ccccTT", strrep("d", 24), "T")) %>% 
   filter(horizontalPosition == "000", verticalPosition == "060") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(RH = RHMean, Tair = tempRHMean) %>% 
   select(Timestamp, RH, Tair) -> temprh
 
-read_csv("../SERC/met_data/PARPAR_30min.csv") %>% 
+read_csv("../SERC/met_data/PARPAR_30min.csv",
+         col_types = paste0("ccccTT", strrep("d", 16), "T")) %>% 
   filter(verticalPosition == "050") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   select(Timestamp, PAR = PARMean) %>%
