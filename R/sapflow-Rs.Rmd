@@ -33,14 +33,18 @@ library(suncalc)
 source(file = "find_day.R")
 
 # count observations
+obs_count_data <- tibble()
+step_count <- 0
 log_obs <- function(d, step_name) {
+  step_count <<- step_count + 1
   d %>% 
-    ungroup() %>% 
     group_by(Tree) %>% 
-    summarise(n = n(),
+    summarise(step_count = step_count,
+              step = step_name,
+              n = n(),
               .groups = "drop") %>% 
-    mutate(step = step_name) %>% 
     bind_rows(obs_count_data) ->> obs_count_data
+  d
 }
 
 # compute rs-js correlation
@@ -80,7 +84,9 @@ control_hm %>%
   mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
+  log_obs("control_hm gather") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  log_obs("join with inventory") %>% 
   select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
 
 ##check where licor data is coming from 
@@ -189,31 +195,38 @@ control_long %>%
   #Then, we need to transform K to Js (sapflux density) through a conversion
   mutate(Js = 119* 10^(-6) * K^(1.231)) %>% 
   filter(Tree %in% rs_trees) %>% 
+  log_obs("filter for rs_trees") %>% 
   # Then, we need to round the timestamp to the nearest hour and take hourly averages
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE), 
             VPD_avg = mean(VPD, na.rm = TRUE),
-            .groups = "drop") -> control_filter
+            .groups = "drop") %>% 
+  log_obs("summarise control_long by hour") -> control_filter
 
 ####RESOLVE THIS 
 rs_long %>%
+  log_obs("initial rs_long") %>% 
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
   group_by(Timestamp, Tree, Species_code) %>%
   summarise(rs_avg = mean(Flux), 
             T5 = mean(T5, na.rm = TRUE), 
             SM = mean(SMoist, na.rm = TRUE),
             .groups = "drop") %>% 
+  log_obs("summarise rs_long by hour") %>% 
   # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
-  ungroup() -> rs_filter
+  log_obs("filtering rs_long") -> rs_filter
 
-control_filter %>% 
+control_filter %>%
+  log_obs("control_filter") %>% 
   left_join(rs_filter) %>% 
+  log_obs("join with rs_filter") %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
-  ungroup() %>% 
-  complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) -> combined
+  log_obs("join with wx_dat") %>% 
+  complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) %>% 
+  log_obs("combined") -> combined
 
 # At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
 
@@ -221,42 +234,30 @@ combined %>%
   mutate(Hour = hour(Timestamp)) %>% 
   group_by(Timestamp, PAR_group, Tree, Species_code) %>% 
   summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
-  ungroup() %>% 
+  log_obs("summarise_if by timestamp") %>% 
   mutate(Daytime = Hour > sunrise & Hour < sunset) %>% 
-  left_join(species_codes) -> hourly
+  left_join(species_codes) %>% 
+  log_obs("hourly") -> hourly
+
 #add SM and temp
-gather(hourly, key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
+hourly %>% 
+  gather(key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
   group_by(Date, Tree, PAR_group) %>% 
   summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
-  ungroup() %>% 
-  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) -> daily
+  log_obs("summarise_if by date") %>% 
+  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
+  log_obs("daily") -> daily
 ```
 
 ```{r check-count, echo = FALSE}
-# Check Rs counts
-obs_count_data <- tibble()
-log_obs(rs_long, "1")
-log_obs(rs_filter, "2")
-log_obs(combined, "3")
-
-ggplot(obs_count_data, aes(x = step, y = n, colour = Tree, group = Tree)) + 
-  geom_line() -> rs_counts
-
-# Check Js counts
-tree_names <- c("C3", "C6", "C7", "C8")
-
-obs_count_data <- tibble()
-log_obs(control_long, "1")
-log_obs(control_filter, "2")
-log_obs(combined, "3")
-
 obs_count_data %>% 
-  filter(Tree %in% tree_names) %>% 
-  ggplot(aes(x = step, y = n, color = Tree, group = Tree)) + 
-  geom_line() -> js_counts
+  filter(Tree %in% rs_trees) %>% 
+  spread(Tree,n) %>% 
+  kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
 ```{r hourly, echo = FALSE, message = FALSE}
@@ -286,8 +287,8 @@ ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)
   labs(x = "Hour of Day", y = "Value") +
   facet_wrap(~Species) + 
   theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
-
 ```
+
 
 ```{r rs-js plot, echo = FALSE, message = FALSE}
 ggplot(hourly, aes(x = Js_avg, rs_avg)) +
@@ -341,8 +342,9 @@ ggplot(hourly, aes(x = Js_avg, rs_avg)) +
 
 ```
 
-```{r q0a, echo = FALSE}
+## Raw data over time
 
+```{r q0a, echo = FALSE}
 ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
   geom_line() + 
   facet_wrap(~Tree, scales = "free", ncol = 2)
@@ -352,6 +354,8 @@ ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
   facet_wrap(~Tree, scales = "free")
 
 ```
+
+## PACF
 
 ```{r pacf, echo = FALSE}
 # The partial autocorrelation function gives the partial correlation (i.e. after
