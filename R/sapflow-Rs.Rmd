@@ -77,7 +77,7 @@ control_hm %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
-  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
+  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> control_long
 
 ##check where licor data is coming from 
 read_csv("../SERC/con_licor_data_20191120.csv") %>%
@@ -113,7 +113,10 @@ read_csv("../SERC/met_data/PARPAR_30min.csv") %>%
             RH = mean(RH),
             Tair = mean(Tair)) %>% 
   mutate(DOY = yday(Timestamp), 
-         Date = date(Timestamp)) -> wx_dat_no_dpar
+         Date = date(Timestamp),
+         es = (6.11 *10^((7.5 * Tair)/(273.3 + Tair)))/10,
+         VPD = ((100 - RH) * es)/100) %>% 
+  select(-es) -> wx_dat_no_dpar
 
 # Compute daytime PAR as a new column
 sunlight_times <- getSunlightTimes(wx_dat_no_dpar$Date,
@@ -181,8 +184,7 @@ control_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js, na.rm = TRUE), 
-            VPD_avg = mean(VPD, na.rm = TRUE)) -> control_filter
+  summarise(Js_avg = mean(Js, na.rm = TRUE)) -> control_filter
 
 ####RESOLVE THIS 
 rs_long %>%
@@ -479,7 +481,7 @@ sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique()
 cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique()
 
 full_sc %>% 
-  select(DOY, VPD = VPD_avg, T5, SM, Precip, RH, Tair) %>% 
+  select(DOY, VPD, T5, SM, Precip, RH, Tair) %>% 
   group_by(DOY) %>% 
   summarise_all(mean, na.rm = TRUE) ->
   climate_data
