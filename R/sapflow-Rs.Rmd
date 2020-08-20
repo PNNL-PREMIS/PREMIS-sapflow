@@ -209,16 +209,6 @@ rs_long %>%
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   ungroup() -> rs_filter
 
-rs_long %>%
-  filter(Flux > 0, Flux < 25, SMoist > 0) %>%
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
-  group_by(Timestamp, Tree, Species_code) %>%
-  summarise(rs_avg = mean(Flux), 
-            T5 = mean(T5), 
-            SM = mean(SMoist),
-            .groups = "drop") %>% 
-  ungroup() -> rs_filter
-
 control_filter %>% 
   left_join(rs_filter) %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
