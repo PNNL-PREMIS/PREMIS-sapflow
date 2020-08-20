@@ -39,8 +39,8 @@ log_obs <- function(d, step_name) {
   step_count <<- step_count + 1
   d %>% 
     group_by(Tree) %>% 
-    summarise(step_count = step_count,
-              step = step_name,
+    summarise(step = step_count,
+              step_name = step_name,
               n = n(),
               .groups = "drop") %>% 
     bind_rows(obs_count_data) ->> obs_count_data
@@ -136,9 +136,10 @@ sunlight_times <- getSunlightTimes(wx_dat_no_dpar$Date,
                                    keep = c("sunrise", "sunset"))
 wx_dat_no_dpar$sunrise <- sunlight_times$sunrise
 wx_dat_no_dpar$sunset <- sunlight_times$sunset
+wx_dat_no_dpar$Daytime <- with(wx_dat_no_dpar, Timestamp >= sunrise, Timestamp <= sunset)
 
 wx_dat_no_dpar %>% 
-  filter(Timestamp >= sunrise, Timestamp <= sunset) %>%   # daytime only
+  filter(Daytime) %>%   # daytime only
   group_by(DOY) %>% 
   summarise(Daytime_PAR = mean(PAR, na.rm = TRUE),
             .groups = "drop") %>% 
@@ -169,13 +170,12 @@ wx_dat %>%
 # Data by month for each variable, colored by day/night
 wx_dat %>% 
   gather(var, value, PAR, Precip, RH, Tair) %>% 
-  mutate(daytime = Timestamp >= sunrise & Timestamp <= sunset,
-         month = month(Timestamp),
+  mutate(month = month(Timestamp),
          hour = hour(Timestamp)) %>% 
-  group_by(month, daytime, hour, var) %>% 
+  group_by(month, Daytime, hour, var) %>% 
   summarise(value = mean(value, na.rm = TRUE),
             .groups = "drop") %>%
-  ggplot(aes(month, value, color = daytime, group = month)) + 
+  ggplot(aes(month, value, color = Daytime, group = month)) + 
   geom_jitter() + facet_grid(var~., scales = "free")
 
 # PAR versus PAR groups
@@ -231,19 +231,6 @@ control_filter %>%
 # At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
 
 combined %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Timestamp, PAR_group, Tree, Species_code) %>% 
-  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
-  log_obs("summarise_if by timestamp") %>% 
-  mutate(Daytime = Hour > sunrise & Hour < sunset) %>% 
-  left_join(species_codes) %>% 
-  log_obs("hourly") -> hourly
-
-#add SM and temp
-hourly %>% 
-  gather(key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
-
-combined %>% 
   mutate(Date = date(Timestamp)) %>% 
   group_by(Date, Tree, PAR_group) %>% 
   summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
@@ -252,6 +239,8 @@ combined %>%
   log_obs("daily") -> daily
 ```
 
+## Observation counts check
+
 ```{r check-count, echo = FALSE}
 obs_count_data %>% 
   filter(Tree %in% rs_trees) %>% 
@@ -259,10 +248,16 @@ obs_count_data %>%
   kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
+## SP please look at this next code chunk
+
+Why is it here? What is it doing? Confusing. If it's not doing something useful _please delete it_.
 
 ```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
 rs_max <- 11
+
+combined %>% 
+  gather(key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
 
 hourly_long[which(hourly_long$Type == "Js_avg"), ] -> x
 
@@ -274,9 +269,9 @@ hourly_long %>%
 
 hourly_long %>% 
   filter(Type == "rs_avg") %>% 
-  bind_rows(hourly_check) -> hourly_norm
-
-ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)) +
+  bind_rows(hourly_check) %>% 
+  left_join(species_codes) %>% 
+  ggplot(aes(x = hour(Timestamp), y = Value, color = Type, group = Type)) +
   geom_line() +
   geom_point(size = 1) +
   scale_color_viridis(discrete = TRUE, 
@@ -289,9 +284,10 @@ ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)
   theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
 ```
 
+# Js versus Rs
 
 ```{r rs-js plot, echo = FALSE, message = FALSE}
-ggplot(hourly, aes(x = Js_avg, rs_avg)) +
+ggplot(combined, aes(x = Js_avg, rs_avg)) +
   geom_point(aes(color = Daytime)) +
   geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
   scale_color_viridis(discrete = TRUE,
@@ -314,7 +310,6 @@ ggplot(data = control_long, aes(x = Timestamp, y = K)) +
 ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
   geom_line() +
   facet_wrap(~Tree, scales = "free")
-
 ```
 
 ## PACF
@@ -441,7 +436,6 @@ To examine this issue, we look at matched days, i.e. that are in the same part o
 - Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
 
 ```{r sc-setup, echo=FALSE, message=FALSE, warning=FALSE}
-
 # Take full dataset and split into groups based on PAR
 daily %>% 
   filter(!is.na(PAR_group)) %>% 
@@ -467,7 +461,7 @@ fsd <- function(sunny_days, climate_data, lookahead, constraints) {
 }
 ```
 
-## Similar_days sensitivty analysis
+## Similar_days sensitivity analysis
 
 ```{r sc-sensitivity, echo=FALSE}
 constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
@@ -557,6 +551,8 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
   facet_wrap(~Tree)
 
 ```
+
+## Sunny-cloudy comparison
 
 ```{r q3b, echo = FALSE, message = FALSE}
 # Plot of sunny DOYs with cloudy DOYs
