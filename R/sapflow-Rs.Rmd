@@ -155,7 +155,7 @@ wx_dat_no_dpar %>%
 
 ## Diagnostic plots for weather data
 
-```{r, weather-qaqc}
+```{r weather-qaqc}
 # Monthly averages by hour for each variable
 wx_dat %>% 
   gather(var, value, PAR, Precip, RH, Tair) %>% 
@@ -241,16 +241,17 @@ combined %>%
 
 ## Observation counts check
 
-```{r check-count, echo = FALSE}
+```{r check-counts, echo = FALSE}
 obs_count_data %>% 
   filter(Tree %in% rs_trees) %>% 
   spread(Tree,n) %>% 
   kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
+
 ## SP please look at this next code chunk
 
-Why is it here? What is it doing? Confusing. If it's not doing something useful _please delete it_.
+Why is it here? What is it doing? Unclear name, no comments, confusing code. If it's not doing something useful _please delete it_.
 
 ```{r hourly, echo = FALSE, message = FALSE}
 rs_min <- 7
@@ -302,7 +303,7 @@ ggplot(combined, aes(x = Js_avg, rs_avg)) +
 
 ## Raw data over time
 
-```{r q0a, echo = FALSE}
+```{r raw-data-over-time, echo = FALSE}
 ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
   geom_line() + 
   facet_wrap(~Tree, scales = "free", ncol = 2)
@@ -361,8 +362,7 @@ Js and Rs will be correlated at some lag of (probably) multiple hours, because o
 #### H1.2 Hypothesis-species. 
 We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
 
-```{r q1, echo = FALSE}
-
+```{r species-comparison, echo = FALSE}
 combined %>%
   group_by(Tree) %>%
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q1
@@ -390,7 +390,7 @@ q1 %>%
 #### H2.1. Hypothesis. 
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
 
-```{r q2, echo = FALSE}
+```{r seasonal-changes, echo = FALSE}
 growing_season <- c(5, 6, 7, 8, 9, 10)
 
 combined %>% 
@@ -418,7 +418,6 @@ ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) +
   facet_wrap(~Tree) + 
   geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu")
-
 ```
 
 ### Q3: Is this correlation or causation? 
@@ -435,7 +434,7 @@ To examine this issue, we look at matched days, i.e. that are in the same part o
 - Just the matched days, how do the max-cor-lags differ between them?
 - Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
 
-```{r sc-setup, echo=FALSE, message=FALSE, warning=FALSE}
+```{r sunny-cloudy-setup, echo=FALSE, message=FALSE, warning=FALSE}
 # Take full dataset and split into groups based on PAR
 daily %>% 
   filter(!is.na(PAR_group)) %>% 
@@ -463,7 +462,7 @@ fsd <- function(sunny_days, climate_data, lookahead, constraints) {
 
 ## Similar_days sensitivity analysis
 
-```{r sc-sensitivity, echo=FALSE}
+```{r sunny-cloudy-sensitivity, echo=FALSE}
 constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
 
 daycount <- function(constraints, lookahead = 20) {
@@ -506,7 +505,7 @@ bind_rows(df1, df2, df3, df4, df5, df6) %>%
 
 
 
-```{r sc-compute, echo=FALSE, message=FALSE, warning=FALSE}
+```{r sunny-cloudy-compute, echo=FALSE, message=FALSE, warning=FALSE}
 fsd(sunny_days, climate_data, lookahead = 14, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
@@ -554,7 +553,7 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 
 ## Sunny-cloudy comparison
 
-```{r q3b, echo = FALSE, message = FALSE}
+```{r sunny-cloudy-differences, echo = FALSE, message = FALSE}
 # Plot of sunny DOYs with cloudy DOYs
 
 matches_data %>% 
@@ -590,7 +589,9 @@ matches_data %>%
   ggtitle("Each line is a day")
 ```
 
-```{r q10-sunny-cloudy, echo = FALSE, message = FALSE}
+# Sunny-cloudy Q10
+
+```{r sunny-cloudy-q10, echo = FALSE, message = FALSE}
 
 ## Sunny Q10
 sunny <- filter(matches_data, Coverage == "Sunny", !is.na(T5), !is.na(rs_avg))
@@ -622,4 +623,3 @@ ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) +
            color = "#440154FF")
 
 ```
-
