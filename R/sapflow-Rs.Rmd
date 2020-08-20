@@ -304,44 +304,6 @@ ggplot(hourly, aes(x = Js_avg, rs_avg)) +
 
 ```
 
-```{r Q10, echo = FALSE, message = FALSE}
-# combined %>% 
-#   mutate(Daytime = if_else(hour(Timestamp) > sunrise & hour(Timestamp) < sunset, TRUE, FALSE)) -> data
-# 
-# ## Daytime Q10
-# daytime <- filter(data, Daytime == TRUE)
-# model_d <- lm(log(rs_avg) ~ T5, data = daytime)
-# daytime$prediction <- exp(predict(model_d))
-# # ggplot(daytime, aes(x = T5, y = rs_avg)) + 
-# #   geom_point() +
-# #   geom_line(data = daytime, aes(y = prediction), linetype = 2)
-# # cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
-# 
-# ## Nighttime Q10
-# nighttime <- filter(data, Daytime == FALSE)
-# model_n <- lm(log(rs_avg) ~ T5, data = nighttime)
-# nighttime$prediction <- exp(predict(model_n))
-# ggplot(nighttime, aes(x = T5, y = rs_avg)) + 
-#   geom_point() + 
-#   geom_line(data = nighttime, aes(y = prediction), linetype = 2)
-# cat("Model Q10 =", exp(10 ^ model_n$coefficients[2]))
-
-## Plot
-#ggplot(data, aes(x = T5, y = rs_avg, color = Daytime)) + 
-# geom_point() +
-# scale_color_viridis(discrete = TRUE,
-#                     name = "Time of Day",
-#                     labels = c("Nighttime", "Daytime")) +
-# annotate("text", x = 10, y = 21.5, 
-#          label = paste("Q10 =", round(exp(10 ^ model_d$coefficients[2]), digits = 3)), 
-#          color = "#FDE725FF") +
-# annotate("text", x = 10, y = 20, 
-#         label = paste("Q10=", round(exp(10 ^ model_n$coefficients[2]), digits = 3)), 
-#         color = "#440154FF") +
-# theme_minimal()
-
-```
-
 ## Raw data over time
 
 ```{r q0a, echo = FALSE}
