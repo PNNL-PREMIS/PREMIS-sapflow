@@ -391,29 +391,20 @@ q1 %>%
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
 
 ```{r seasonal-changes, echo = FALSE}
-growing_season <- c(5, 6, 7, 8, 9, 10)
+growing_season <- c(5, 6, 7, 8, 9, 10)  # May through October
 
 combined %>% 
-  mutate(Month = month(Timestamp), Week = week(Timestamp)) %>% 
+  mutate(Month = month(Timestamp), 
+         Week = week(Timestamp)) %>% 
   filter(Month %in% growing_season) -> growing # filter for growing season
 
-weeks <- sort(unique(growing$Week))
-q2_list <- list() 
+growing %>% 
+  group_by(Week, Tree) %>% 
+  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) %>% 
+  ungroup() %>% 
+  na.omit() -> cor_by_week
 
-for(i in 1:length(weeks)) {
-  
-  growing %>% 
-    filter(Week == weeks[i]) %>% 
-    group_by(Tree) %>% 
-    do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0,23))) -> tib 
-  
-  q2_list[[as.character(weeks[i])]] <- tib
-  
-}
-
-bind_rows(q2_list, .id = "Week") %>% na.omit() -> q2
-
-ggplot(data = q2, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
   geom_vline(xintercept = 30) +
