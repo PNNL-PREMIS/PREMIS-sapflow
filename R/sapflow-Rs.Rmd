@@ -87,7 +87,7 @@ control_hm %>%
   log_obs("control_hm gather") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   log_obs("join with inventory") %>% 
-  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
+  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> control_long
 
 ##check where licor data is coming from 
 read_csv("../SERC/con_licor_data_20191120.csv",
@@ -128,7 +128,10 @@ read_csv("../SERC/met_data/PARPAR_30min.csv",
             Tair = mean(Tair),
             .groups = "drop") %>% 
   mutate(DOY = yday(Timestamp), 
-         Date = date(Timestamp)) -> wx_dat_no_dpar
+         Date = date(Timestamp),
+         es = (6.11 *10^((7.5 * Tair)/(273.3 + Tair)))/10,
+         VPD = ((100 - RH) * es)/100) %>% 
+  select(-es) -> wx_dat_no_dpar
 
 # Compute daytime PAR as a new column
 sunlight_times <- getSunlightTimes(wx_dat_no_dpar$Date,
@@ -164,7 +167,7 @@ wx_dat %>%
   group_by(month, hour, var) %>% 
   summarise(value = mean(value, na.rm = TRUE),
             .groups = "drop") %>%
-  ggplot(aes(hour, value, color = month, group = month)) + 
+  ggplot(aes(hour, value, color = as.factor(month), group = month)) + 
   geom_line() + facet_grid(var~., scales = "free")
 
 # Data by month for each variable, colored by day/night
@@ -176,11 +179,14 @@ wx_dat %>%
   summarise(value = mean(value, na.rm = TRUE),
             .groups = "drop") %>%
   ggplot(aes(month, value, color = Daytime, group = month)) + 
+  scale_color_viridis(discrete = TRUE,
+                      name = "Time of Day",
+                      labels = c("Nighttime", "Daytime")) +
   geom_jitter() + facet_grid(var~., scales = "free")
 
 # PAR versus PAR groups
 ggplot(wx_dat, aes(DOY, PAR)) + 
-  geom_point(alpha = 0.2) + 
+  geom_point(alpha = 0.2, color = "grey60") + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
@@ -200,8 +206,7 @@ control_long %>%
   mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js, na.rm = TRUE), 
-            VPD_avg = mean(VPD, na.rm = TRUE),
+  summarise(Js_avg = mean(Js, na.rm = TRUE),
             .groups = "drop") %>% 
   log_obs("summarise control_long by hour") -> control_filter
 
@@ -435,7 +440,7 @@ sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique()
 cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique()
 
 full_sc %>% 
-  select(DOY, VPD = VPD_avg, T5, SM, Precip, RH, Tair) %>% 
+  select(DOY, VPD, T5, SM, Precip, RH, Tair) %>% 
   group_by(DOY) %>% 
   summarise_all(mean, na.rm = TRUE) ->
   climate_data
