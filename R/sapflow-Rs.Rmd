@@ -141,7 +141,7 @@ wx_dat_no_dpar %>%
 
 ## Diagnostic plots for weather data
 
-```{r, weather-qaqc}
+```{r weather-qaqc}
 # Monthly averages by hour for each variable
 wx_dat %>% 
   gather(var, value, PAR, Precip, RH, Tair) %>% 
@@ -149,8 +149,8 @@ wx_dat %>%
          hour = hour(Timestamp)) %>% 
   group_by(month, hour, var) %>% 
   summarise(value = mean(value, na.rm = TRUE)) %>%
-  ggplot(aes(hour, value, color = month, group = month)) + 
-  geom_line() + facet_grid(var~., scales = "free")
+  ggplot(aes(hour, value, color = as.factor(month), group = month)) + 
+  geom_line() + facet_grid(var~., scales = "free") + labs(color = "Month")
 
 # Data by month for each variable, colored by day/night
 wx_dat %>% 
@@ -161,11 +161,14 @@ wx_dat %>%
   group_by(month, daytime, hour, var) %>% 
   summarise(value = mean(value, na.rm = TRUE)) %>%
   ggplot(aes(month, value, color = daytime, group = month)) + 
+  scale_color_viridis(discrete = TRUE,
+                      name = "Time of Day",
+                      labels = c("Nighttime", "Daytime")) +
   geom_jitter() + facet_grid(var~., scales = "free")
 
 # PAR versus PAR groups
 ggplot(wx_dat, aes(DOY, PAR)) + 
-  geom_point(alpha = 0.2) + 
+  geom_point(alpha = 0.2, color = "grey60") + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
