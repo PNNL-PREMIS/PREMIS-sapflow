@@ -194,8 +194,6 @@ ggplot(wx_dat, aes(DOY, PAR)) +
 ```{r data-cleaning, echo = FALSE, message = FALSE}
 # Next, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
-sunrise <- 6
-sunset <- 19
 
 control_long %>% 
   #Then, we need to transform K to Js (sapflux density) through a conversion
@@ -230,7 +228,7 @@ control_filter %>%
   log_obs("join with rs_filter") %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
   log_obs("join with wx_dat") %>% 
-  complete(Tree, Timestamp = seq(ymd_hms(min(Timestamp)), ymd_hms(max(Timestamp)), by = "hour")) %>% 
+  complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
   log_obs("combined") -> combined
 
 # At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
@@ -254,55 +252,21 @@ obs_count_data %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-## SP please look at this next code chunk
-
-Why is it here? What is it doing? Unclear name, no comments, confusing code. If it's not doing something useful _please delete it_.
-
-```{r hourly, echo = FALSE, message = FALSE}
-rs_min <- 7
-rs_max <- 11
-
-combined %>% 
-  gather(key = "Type", value = "Value", rs_avg, Js_avg) -> hourly_long
-
-hourly_long[which(hourly_long$Type == "Js_avg"), ] -> x
-
-hourly_long %>% 
-  ungroup %>% 
-  filter(Type == "Js_avg") %>% 
-  select(-Value) %>% 
-  mutate(Value  = (rs_max - rs_min) * ((x$Value - min(x$Value)) / (max(x$Value) - min(x$Value))) + rs_min) -> hourly_check
-
-hourly_long %>% 
-  filter(Type == "rs_avg") %>% 
-  bind_rows(hourly_check) %>% 
-  left_join(species_codes) %>% 
-  ggplot(aes(x = hour(Timestamp), y = Value, color = Type, group = Type)) +
-  geom_line() +
-  geom_point(size = 1) +
-  scale_color_viridis(discrete = TRUE, 
-                      option = "D", 
-                      begin =0.7, 
-                      end = 0.4,
-                      labels = c("Js", "Rs")) +
-  labs(x = "Hour of Day", y = "Value") +
-  facet_wrap(~Species) + 
-  theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
-```
-
 # Js versus Rs
 
 ```{r rs-js plot, echo = FALSE, message = FALSE}
 ggplot(combined, aes(x = Js_avg, rs_avg)) +
-  geom_point(aes(color = Daytime)) +
-  geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
+  geom_point(aes(color = Daytime), alpha = 0.5) +
+  facet_wrap(~Daytime, scales = "free", ncol = 1) +
+  geom_smooth(aes(group = Daytime), color = "black", method = "lm") +
   scale_color_viridis(discrete = TRUE,
                       name = "Time of Day",
                       labels = c("Nighttime", "Daytime")) +
   scale_fill_viridis(discrete = TRUE,
                      name = "Time of Day",
                      labels = c("Nighttime", "Daytime")) +
-  labs(x = "Js (m/s)", y = "Rs (umol/m/s)")
+  labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
+  theme(strip.text.x = element_blank())
 
 ```
 
@@ -396,7 +360,7 @@ q1 %>%
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
 
 ```{r seasonal-changes, echo = FALSE}
-growing_season <- c(5, 6, 7, 8, 9, 10)  # May through October
+growing_season <- c(4, 5, 6, 7, 8, 9, 10)  # April through October
 
 combined %>% 
   mutate(Month = month(Timestamp), 
@@ -412,8 +376,9 @@ growing %>%
 ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
-  geom_vline(xintercept = 30) +
-  scale_fill_distiller(palette = "RdBu")
+#  geom_vline(xintercept = 30) + # not sure what this was meant for
+  scale_fill_distiller(palette = "RdBu") +
+  xlab("Week of Year") + ylab("Hour of Day")
 ```
 
 ### Q3: Is this correlation or causation? 
@@ -436,8 +401,8 @@ daily %>%
   filter(!is.na(PAR_group)) %>% 
   mutate(Coverage = c("Cloudy", "Medium", "Sunny")[PAR_group]) -> full_sc
 
-sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique()
-cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique()
+sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique() %>% na.omit()
+cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique() %>% na.omit()
 
 full_sc %>% 
   select(DOY, VPD, T5, SM, Precip, RH, Tair) %>% 
@@ -456,7 +421,11 @@ fsd <- function(sunny_days, climate_data, lookahead, constraints) {
 }
 ```
 
-## Similar_days sensitivity analysis
+#### Constraint sensitivity test
+
+We've created a function `similar_days` to match days of similar climate conditions but varying PAR (i.e. sunny-cloudy days)
+
+First, we tested how the constraints for climate conditions impacted the number of matches returned
 
 ```{r sunny-cloudy-sensitivity, echo=FALSE}
 constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
@@ -499,10 +468,14 @@ bind_rows(df1, df2, df3, df4, df5, df6) %>%
   facet_wrap(~variable, scales = "free")
 ```
 
-
-
 ```{r sunny-cloudy-compute, echo=FALSE, message=FALSE, warning=FALSE}
-fsd(sunny_days, climate_data, lookahead = 14, constraints) %>% 
+
+constraints %>% 
+  kable("html", col.names = " ") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>% 
+  add_header_above(c("Constraint", "Range"))
+
+fsd(sunny_days, climate_data, lookahead = 20, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
@@ -533,7 +506,6 @@ matches_data %>%
   matches_data
 ```
 
-
 ```{r q3a, echo = FALSE}
 # Lag over whole growing season by sunny vs. cloudy
 # should be using DAILY PAR FOR THIS!!!!!!!!!!!!
@@ -543,7 +515,8 @@ full_sc %>%
 
 ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
   geom_line() +
-  facet_wrap(~Tree)
+  facet_wrap(~Tree) +
+  ylab("Correlation") + xlab("Hour of Day")
 
 ```
 
@@ -568,9 +541,6 @@ matches_data %>%
 
 # Boxplots: sunny versus cloudy days
 ggplot(matches_data, aes(Tree, Js_avg, color = Coverage)) + 
-  geom_boxplot() + 
-  facet_wrap(~Tree, scales = "free")
-ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) + 
   geom_boxplot() + 
   facet_wrap(~Tree, scales = "free")
 
@@ -609,8 +579,9 @@ cloudy$prediction <- exp(predict(model_c))
 
 ## Plot
 ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) + 
-  geom_point() +
+  geom_point(alpha = 0.3) +
   scale_color_viridis(discrete = TRUE) +
+  ylab("Rs") +
   annotate("text", x = 10, y = 21.5, 
            label = paste("Q10 =", round(exp(10 ^ model_s$coefficients[2]), digits = 3)), 
            color = "#FDE725FF") +
