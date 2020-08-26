@@ -430,7 +430,7 @@ First, we tested how the constraints for climate conditions impacted the number 
 ```{r sunny-cloudy-sensitivity, echo=FALSE}
 constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
 
-daycount <- function(constraints, lookahead = 20) {
+daycount <- function(constraints, lookahead = 14) {
   suppressMessages(
     nrow(fsd(sunny_days, climate_data, lookahead, constraints))
   )
@@ -448,7 +448,7 @@ t5_seq <- seq(0.1, 5, length.out = 20)
 df3 <- tibble(variable = "T5",
               value = t5_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("T5" = x))))
-tair_seq <- seq(0.1, 5, length.out = 20)
+tair_seq <- seq(1, 35, length.out = 20)
 df4 <- tibble(variable = "Tair",
               value = tair_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("Tair" = x))))
@@ -475,7 +475,7 @@ constraints %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>% 
   add_header_above(c("Constraint", "Range"))
 
-fsd(sunny_days, climate_data, lookahead = 20, constraints) %>% 
+fsd(sunny_days, climate_data, lookahead = 14, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
