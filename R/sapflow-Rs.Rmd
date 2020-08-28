@@ -244,6 +244,42 @@ combined %>%
   log_obs("daily") -> daily
 ```
 
+## Hysteresis between temperature and Rs / Js
+
+```{r hysteresis, echo = FALSE}
+# That hysteresis plot Peishi showed was cool. Let's make one here
+combined %>% 
+  mutate(Month = month(Timestamp), 
+         Hour = hour(Timestamp)) ->
+  combined_hyst
+
+# Compute mean T5, Rs, and Js by month so we can make nice labels
+combined_hyst %>% 
+  group_by(Tree, Month) %>% 
+  summarise(T5 = mean(T5, na.rm = TRUE),
+            rs_avg = mean(rs_avg, na.rm = TRUE),
+            Js_avg = mean(Js_avg, na.rm = TRUE),
+            .groups = "drop") ->
+  hyst_labels
+
+# Utility plotting function
+hyst_plot <- function(combined_hyst, depvar) {
+  combined_hyst %>% 
+  group_by(Tree, Month, Hour) %>% 
+  summarise(T5 = mean(T5, na.rm = TRUE), 
+            rs_avg = mean(rs_avg, na.rm = TRUE),
+            Js_avg = mean(Js_avg, na.rm = TRUE),
+            .groups = "drop") %>% 
+  ggplot(aes_string("T5", depvar, color = "Hour", group = "Month")) + 
+  geom_path(na.rm = TRUE) + 
+  facet_wrap(~Tree)
+}
+
+hyst_plot(combined_hyst, "rs_avg")
+hyst_plot(combined_hyst, "Js_avg")
+```
+
+
 ## Observation counts check
 
 ```{r check-counts, echo = FALSE}
