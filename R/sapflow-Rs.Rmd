@@ -257,22 +257,30 @@ combined %>%
 combined_hyst %>% 
   group_by(Tree, Month) %>% 
   summarise(T5 = mean(T5, na.rm = TRUE),
+            SM = round(mean(SM, na.rm = TRUE), 2),
             rs_avg = mean(rs_avg, na.rm = TRUE),
             Js_avg = mean(Js_avg, na.rm = TRUE),
             .groups = "drop") ->
   hyst_labels
 
 # Utility plotting function
+library(ggrepel)
 hyst_plot <- function(combined_hyst, depvar) {
   combined_hyst %>% 
-  group_by(Tree, Month, Hour) %>% 
-  summarise(T5 = mean(T5, na.rm = TRUE), 
-            rs_avg = mean(rs_avg, na.rm = TRUE),
-            Js_avg = mean(Js_avg, na.rm = TRUE),
-            .groups = "drop") %>% 
-  ggplot(aes_string("T5", depvar, color = "Hour", group = "Month")) + 
-  geom_path(na.rm = TRUE) + 
-  facet_wrap(~Tree)
+    group_by(Tree, Month, Hour) %>% 
+    summarise(T5 = mean(T5, na.rm = TRUE),
+              SM = mean(SM, na.rm = TRUE),
+              rs_avg = mean(rs_avg, na.rm = TRUE),
+              Js_avg = mean(Js_avg, na.rm = TRUE),
+              .groups = "drop") %>% 
+    ggplot(aes_string("T5", depvar, color = "Hour", group = "Month")) + 
+    geom_path(na.rm = TRUE) + 
+    scale_color_gradient2(low = "#132B43", mid = "#56B1F7", high = "#132B43", midpoint = 12) +
+    facet_wrap(~Tree) +
+    geom_text_repel(data = hyst_labels, aes(label = substr(month.name[Month], 1, 3)), 
+                    size = 2, color = "black",
+                    nudge_y = 4,
+                    segment.colour = NA)
 }
 
 hyst_plot(combined_hyst, "rs_avg")
