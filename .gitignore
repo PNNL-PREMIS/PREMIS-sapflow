@@ -19,3 +19,4 @@ html-figures/
 # OS crap
 .DS_Store
 R/sapflow-Rs.html
+R/sapflow-Rs_cache/html/__packages
