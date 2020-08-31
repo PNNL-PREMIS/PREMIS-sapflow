@@ -32,6 +32,7 @@ library(viridis)
 library(wesanderson)
 library(kableExtra)
 library(suncalc)
+library(ggrepel)
 
 # find matches
 source(file = "find_day.R")
@@ -592,25 +593,26 @@ ggplot(matches_data, aes(Tree, Js_avg, color = Coverage)) +
 #   ggtitle("Each line is a day")
 ```
 
-```{r sunny-cloudy-doy, echo = FALSE, message = FALSE, fig.height = 15}
+```{r sunny-cloudy-doy, echo = FALSE, message = FALSE, fig.height = 10}
 # Plot of sunny DOYs with cloudy DOYs
 
 matches_data %>% 
-  filter(Js_suncloud_avail, Species_code == "LITU") %>% 
+  filter(Js_suncloud_avail) %>% 
+  mutate(groups = paste(DOY, Coverage, Tree)) %>% 
   na.omit() %>% 
   ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +
-  geom_point(aes(group = paste(DOY, Coverage, Tree))) + 
-  geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
-  facet_wrap(~Group_No, scales = "free", ncol = 3)
+  geom_point(aes(group = groups)) + 
+  geom_line(aes(group = groups)) + 
+  facet_wrap(Species_code~Group_No, scales = "free")
 
 matches_data %>% 
-  filter(Rs_suncloud_avail, Species_code == "LITU") %>% 
+  filter(Rs_suncloud_avail) %>% 
   mutate(groups = paste(DOY, Coverage, Tree)) %>% 
   na.omit() %>% 
   ggplot(aes(x = hour(Timestamp), y = rs_avg, color = Coverage)) +
   geom_point(aes(group = groups)) + 
   geom_line(aes(group = groups)) +
-  facet_wrap(~Group_No, scales = "free", ncol = 3)
+  facet_wrap(Species_code~Group_No, scales = "free")
 ```
 
 ## Sunny-cloudy Q10
