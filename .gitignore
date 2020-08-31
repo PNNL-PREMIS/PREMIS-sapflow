@@ -15,8 +15,8 @@ R/sapflow-Rs.html
 *.html
 html/*.png
 html-figures/
+R/sapflow-Rs.html
+R/sapflow-Rs_cache/html/__packages
 
 # OS crap
 .DS_Store
-R/sapflow-Rs.html
-R/sapflow-Rs_cache/html/__packages
