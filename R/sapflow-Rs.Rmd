@@ -250,7 +250,7 @@ combined %>%
 # Make a plot showing how to interpret hysteresis figures
 hrs <- 0:23
 
-lapply(seq(0, 23, by = 4), function(lg) {
+lapply(seq(0, 23, by = 3), function(lg) {
   hrs_lag <- c(hrs[(lg + 1):24], hrs[0:lg])
   tibble(lag = lg,
          hour = hrs, 
@@ -264,7 +264,10 @@ hyst_example %>%
   gather(var, value, temp, resp) %>% 
   ggplot(aes(hour, value, color = var)) + geom_jitter() + facet_wrap(~lag)
 hyst_example %>% 
-  ggplot(aes(temp, resp)) + geom_path(arrow = grid::arrow()) + facet_wrap(~lag)
+  mutate(hour_lbl = if_else(hour %% 2 == 0, as.character(hour), "")) %>% 
+  ggplot(aes(temp, resp)) + geom_path(arrow = grid::arrow()) +
+  geom_text(aes(label = hour_lbl), size = 2, nudge_y = .1) +
+  facet_wrap(~lag)
 ```
 
 
