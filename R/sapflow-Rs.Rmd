@@ -251,6 +251,31 @@ combined %>%
 
 ## Hysteresis between temperature and Rs / Js
 
+```{r, echo=FALSE}
+# Make a plot showing how to interpret hysteresis figures
+hrs <- 0:23
+
+lapply(seq(0, 23, by = 3), function(lg) {
+  hrs_lag <- c(hrs[(lg + 1):24], hrs[0:lg])
+  tibble(lag = lg,
+         hour = hrs, 
+         temp = sin(hrs / 24 * 2 * pi), 
+         resp = sin(hrs_lag / 24 * 2 * pi))
+}) %>% 
+  bind_rows() ->
+  hyst_example
+
+hyst_example %>%
+  gather(var, value, temp, resp) %>% 
+  ggplot(aes(hour, value, color = var)) + geom_jitter() + facet_wrap(~lag)
+hyst_example %>% 
+  mutate(hour_lbl = if_else(hour %% 2 == 0, as.character(hour), "")) %>% 
+  ggplot(aes(temp, resp)) + geom_path(arrow = grid::arrow()) +
+  geom_text(aes(label = hour_lbl), size = 2, nudge_y = .1) +
+  facet_wrap(~lag)
+```
+
+
 ```{r hysteresis, echo = FALSE}
 # That hysteresis plot Peishi showed was cool. Let's make one here
 combined %>% 
