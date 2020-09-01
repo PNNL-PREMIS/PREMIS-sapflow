@@ -58,6 +58,10 @@ compute_lag_cor <- function(rs, js, hour_range) {
   hours <- min(hour_range):max(hour_range)
   result <- tibble(Hour = hours, Cor = NA)
   
+  if(sum(!is.na(rs)) < 6 | sum(!is.na(js)) < 6) {
+    return(result)  # just NA
+  }
+  
   for(i in seq_along(hours)) {
     js_lag <- lead(js, n = hours[i])
     result$Cor[i] <- cor(rs, js_lag, use = "na.or.complete")
@@ -243,8 +247,10 @@ combined %>%
   mutate(Date = date(Timestamp)) %>% 
   group_by(Date, Tree, PAR_group) %>% 
   summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
+  ungroup() %>% 
   log_obs("summarise_if by date") %>% 
   complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
+  mutate(DOY = yday(Date)) %>%  # recalculate to get rid of fractions
   log_obs("daily") -> daily
 ```
 
@@ -344,7 +350,8 @@ The partial autocorrelation function gives the partial correlation (i.e. after c
 combined %>% 
   group_by(Timestamp) %>% 
   summarise(rs_avg = mean(rs_avg, na.rm = TRUE),
-            Js_avg = mean(Js_avg, na.rm = TRUE)) %>% 
+            Js_avg = mean(Js_avg, na.rm = TRUE),
+            .groups = "drop") %>% 
   arrange(Timestamp) ->
   combined_pacf
 
@@ -481,7 +488,7 @@ We've created a function `similar_days` to match days of similar climate conditi
 First, we tested how the constraints for climate conditions impacted the number of matches returned
 
 ```{r sunny-cloudy-sensitivity, echo=FALSE, cache = TRUE}
-constraints <- c("VPD" = 1, "T5" = 5, "SM" = 1, "RH" = 30, "Tair" = 15)
+constraints <- c("VPD" = 0.5, "T5" = 2, "SM" = 0.2, "RH" = 10, "Tair" = 2)
 
 daycount <- function(constraints, lookahead = 8) {
   suppressMessages(
@@ -528,7 +535,12 @@ constraints %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>% 
   add_header_above(c("Constraint", "Range"))
 
-fsd(sunny_days, climate_data, lookahead = 8, constraints) %>% 
+
+# So we have a problem--seems like we're getting duplicated data?
+# Let's follow C3 day 140 through the following code and see where things are going wrong
+
+# Find the days that are similar to the sunny days, and filter those to known cloudy days
+fsd(sunny_days, climate_data, lookahead = 14, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
