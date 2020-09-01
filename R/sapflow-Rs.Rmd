@@ -337,7 +337,7 @@ obs_count_data %>%
 ## Js versus Rs
 Split by daytime and nighttime values
 
-```{r rs-js plot, echo = FALSE, message = FALSE}
+```{r rs-js plot, echo=FALSE, message=FALSE}
 ggplot(combined, aes(x = Js_avg, rs_avg)) +
   geom_point(aes(color = Daytime), alpha = 0.5) +
   facet_wrap(~Daytime, scales = "free", ncol = 1) +
@@ -429,7 +429,6 @@ q1 %>%
             `Hour Lag` = Hour[which.max(Cor)], 
             `Maximum Correlation` = max(Cor),
             .groups = "drop") %>% 
-  select(-`.groups`) %>% 
   kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 
@@ -566,7 +565,7 @@ constraints %>%
 # Let's follow C3 day 140 through the following code and see where things are going wrong
 
 # Find the days that are similar to the sunny days, and filter those to known cloudy days
-fsd(sunny_days, climate_data, lookahead = 14, constraints) %>% 
+fsd(sunny_days, climate_data, lookahead = 8, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
   rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
 
@@ -630,26 +629,22 @@ ggplot(matches_data, aes(Tree, Js_avg, color = Coverage)) +
 #   ggtitle("Each line is a day")
 ```
 
-```{r sunny-cloudy-doy, echo = FALSE, message = FALSE, fig.height = 10}
+```{r sunny-cloudy-doy, echo=FALSE, fig.height=, message=FALSE}
 # Plot of sunny DOYs with cloudy DOYs
 
 matches_data %>% 
-  filter(Js_suncloud_avail) %>% 
-  mutate(groups = paste(DOY, Coverage, Tree)) %>% 
-  na.omit() %>% 
-  ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +
-  geom_point(aes(group = groups)) + 
-  geom_line(aes(group = groups)) + 
-  facet_wrap(Species_code~Group_No, scales = "free")
+  filter(Js_suncloud_avail) %>% 	 
+  ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +	  
+  geom_point() + 	  
+  geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
+  facet_grid(Group_No~Tree, scales = "free")
 
 matches_data %>% 
   filter(Rs_suncloud_avail) %>% 
-  mutate(groups = paste(DOY, Coverage, Tree)) %>% 
-  na.omit() %>% 
   ggplot(aes(x = hour(Timestamp), y = rs_avg, color = Coverage)) +
-  geom_point(aes(group = groups)) + 
-  geom_line(aes(group = groups)) +
-  facet_wrap(Species_code~Group_No, scales = "free")
+  geom_point() + 
+  geom_line(aes(group = paste(DOY, Coverage, Tree))) +	
+  facet_grid(Group_No~Tree, scales = "free")
 ```
 
 ## Sunny-cloudy Q10
