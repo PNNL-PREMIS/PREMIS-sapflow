@@ -532,27 +532,28 @@ daycount <- function(constraints, lookahead = 8) {
   )
 }
 
-la_seq <- 1:20
+nsens <- 10  # number of points to run for each of the below
+la_seq <- seq(1, 20, length.out = nsens)
 df1 <- tibble(variable = "lookahead",
               value = la_seq,
               daycount = sapply(la_seq, function(x) daycount(constraints, lookahead = x)))
-vpd_seq <- seq(0.01, 1, length.out = 20)
+vpd_seq <- seq(0.01, 1, length.out = nsens)
 df2 <- tibble(variable = "vpd",
               value = vpd_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("VPD" = x))))
-t5_seq <- seq(0.1, 5, length.out = 20)
+t5_seq <- seq(0.1, 5, length.out = nsens)
 df3 <- tibble(variable = "T5",
               value = t5_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("T5" = x))))
-tair_seq <- seq(1, 35, length.out = 20)
+tair_seq <- seq(1, 35, length.out = nsens)
 df4 <- tibble(variable = "Tair",
               value = tair_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("Tair" = x))))
-sm_seq <- seq(0.05, 1, length.out = 20)
+sm_seq <- seq(0.05, 1, length.out = nsens)
 df5 <- tibble(variable = "SM",
               value = sm_seq,
               daycount = sapply(sm_seq, function(x) daycount(constraints = c("SM" = x))))
-rh_seq <- seq(5, 50, length.out = 20)
+rh_seq <- seq(5, 50, length.out = nsens)
 df6 <- tibble(variable = "RH",
               value = rh_seq,
               daycount = sapply(sm_seq, function(x) daycount(constraints = c("RH" = x))))
@@ -647,6 +648,7 @@ matches_data %>%
   group_by(Sunny_group, Tree, Species_code, Coverage) %>% 
   summarise(Daily_Js_avg = mean(Js_avg, na.rm = TRUE),
             Daily_Rs_avg = mean(rs_avg, na.rm = TRUE),
+            Daily_SM = mean(SM, na.rm = TRUE),
             .groups = "drop") ->
   matches_daily
 
@@ -663,14 +665,14 @@ Student's t-test for this.
 # T-test for group differences
 cat("Js_avg:")
 matches_daily %>% 
-  select(-Daily_Rs_avg) %>% 
+  select(Sunny_group, Tree, Coverage, Daily_Js_avg) %>% 
   spread(Coverage, Daily_Js_avg) ->
   tt_js
 t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
 
 cat("Rs_avg:")
 matches_daily %>% 
-  select(-Daily_Js_avg) %>% 
+  select(Sunny_group, Tree, Coverage, Daily_Rs_avg) %>% 
   spread(Coverage, Daily_Rs_avg) ->
   tt_js
 t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
