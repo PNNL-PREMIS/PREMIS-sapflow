@@ -634,14 +634,48 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 
 ```{r sunny-cloudy-differences, echo = FALSE, message = FALSE}
 # Boxplots: sunny versus cloudy days
-ggplot(matches_data, aes(Tree, Js_avg, color = Coverage)) + 
+ggplot(matches_data, aes(as.factor(Sunny_group), Js_avg, color = Coverage)) + 
   geom_boxplot(na.rm = TRUE) + 
-  facet_wrap(~Tree, scales = "free")
+  facet_wrap(~Species_code, scales = "free")
 
 ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) + 
   geom_boxplot(na.rm = TRUE) + 
-  facet_wrap(~Tree, scales = "free")
+  facet_wrap(~Species_code, scales = "free")
+
+
+matches_data %>% 
+  group_by(Sunny_group, Tree, Species_code, Coverage) %>% 
+  summarise(Daily_Js_avg = mean(Js_avg, na.rm = TRUE),
+            Daily_Rs_avg = mean(rs_avg, na.rm = TRUE),
+            .groups = "drop") ->
+  matches_daily
+
+ggplot(matches_daily, aes(Species_code, Daily_Js_avg, color = Coverage)) + geom_boxplot()
+ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + geom_boxplot()
 ```
+
+# Stats
+
+Differences in daily means between sunny and cloudy days? We use a paired (because we have matched days)
+Student's t-test for this.
+
+```{r stats}
+# T-test for group differences
+cat("Js_avg:")
+matches_daily %>% 
+  select(-Daily_Rs_avg) %>% 
+  spread(Coverage, Daily_Js_avg) ->
+  tt_js
+t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
+
+cat("Rs_avg:")
+matches_daily %>% 
+  select(-Daily_Js_avg) %>% 
+  spread(Coverage, Daily_Rs_avg) ->
+  tt_js
+t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
+```
+
 
 ```{r sunny-cloudy-doy, echo=FALSE, message=FALSE}
 # Plot of sunny DOYs with cloudy DOYs
@@ -658,6 +692,16 @@ matches_data %>%
   geom_point() + 
   geom_line(aes(group = paste(DOY, Coverage, Tree))) +	
   facet_grid(Sunny_group~Tree, scales = "free")
+
+# Perhaps more useful plots:
+matches_data %>% 
+  ggplot(aes(hour(Timestamp), Js_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  geom_line() + 
+  facet_wrap(~Sunny_group, scales = "free")
+matches_data %>% 
+  ggplot(aes(hour(Timestamp), rs_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  geom_line() + 
+  facet_wrap(~Sunny_group, scales = "free")
 ```
 
 ## Sunny-cloudy Q10
