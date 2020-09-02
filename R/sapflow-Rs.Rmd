@@ -197,13 +197,13 @@ wx_dat %>%
 
 # PAR versus PAR groups
 ggplot(wx_dat, aes(DOY, PAR)) + 
-  geom_point(alpha = 0.2, color = "grey60") + 
+  geom_point(alpha = 0.2, color = "grey60", na.rm = TRUE) + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
 
 ```{r data-cleaning, echo = FALSE, message = FALSE}
-# Next, we need to filter for the Js trees that also have Rs measurements
+# First, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
 
 control_long %>% 
@@ -246,18 +246,17 @@ control_filter %>%
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
-  group_by(Date, Tree, PAR_group) %>% 
+  group_by(Date, DOY, Tree, PAR_group) %>% 
   summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
   ungroup() %>% 
   log_obs("summarise_if by date") %>% 
   complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
-  mutate(DOY = yday(Date)) %>%  # recalculate to get rid of fractions
   log_obs("daily") -> daily
 ```
 
 ## Hysteresis between temperature and Rs / Js
 
-```{r, echo=FALSE}
+```{r hysteresis-example, echo=FALSE}
 # Make a plot showing how to interpret hysteresis figures
 hrs <- 0:23
 
@@ -316,7 +315,7 @@ hyst_plot <- function(combined_hyst, depvar) {
     geom_text_repel(data = hyst_labels, aes(label = substr(month.name[Month], 1, 3)), 
                     size = 2, color = "black",
                     nudge_y = 4,
-                    segment.colour = NA)
+                    segment.colour = NA, na.rm = TRUE)
 }
 
 hyst_plot(combined_hyst, "rs_avg")
@@ -338,7 +337,9 @@ obs_count_data %>%
 Split by daytime and nighttime values
 
 ```{r rs-js plot, echo=FALSE, message=FALSE}
-ggplot(combined, aes(x = Js_avg, rs_avg)) +
+combined %>% 
+  filter(!is.na(Js_avg), !is.na(rs_avg)) %>% 
+  ggplot(aes(x = Js_avg, rs_avg)) +
   geom_point(aes(color = Daytime), alpha = 0.5) +
   facet_wrap(~Daytime, scales = "free", ncol = 1) +
   geom_smooth(aes(group = Daytime), color = "black", method = "lm") +
@@ -350,22 +351,22 @@ ggplot(combined, aes(x = Js_avg, rs_avg)) +
                      labels = c("Nighttime", "Daytime")) +
   labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
   theme(strip.text.x = element_blank())
-
 ```
 
 ## Raw data over time
 
 ```{r raw-data-over-time, echo = FALSE}
 ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
-  geom_line() + 
+  geom_line(na.rm = TRUE) + 
   facet_wrap(~Tree, scales = "free", ncol = 2)
 
 ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
-  geom_line() +
+  geom_line(na.rm = TRUE) +
   facet_wrap(~Tree, scales = "free")
 ```
 
 ## PACF
+
 The partial autocorrelation function gives the partial correlation (i.e. after controlling for other variables, or in this case, time lags) of a stationary time series with its own lagged values.
 
 - Note: There's a sharp flip in the correlation of Js values from hour 1 to 2. Interesting...
@@ -389,13 +390,13 @@ if(all(duplicated(timediffs)[-1])) {
   title <- "*** WARNING *** 'combined' has gaps or\ninconsistent difftimes"
 }
 
-pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE)
-pacf_js <- pacf(combined_pacf$Js_avg, na.action = na.pass, plot = FALSE)
-pacf_rs <- tibble(which = "R[S]", lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
-pacf_js <- tibble(which = "J[S]", lag = pacf_js$lag[,,1], PACF = pacf_js$acf[,,1])
-bind_rows(pacf_js, pacf_rs) %>% 
-  ggplot(aes(lag, PACF, fill = which)) + geom_col(position = "dodge") +
-  xlim(c(0, 23)) +
+pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pacf_js <- pacf(combined_pacf$Js_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pdat_rs <- tibble(which = "R[S]", Lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
+pdat_js <- tibble(which = "J[S]", Lag = pacf_js$lag[,,1], PACF = pacf_js$acf[,,1])
+bind_rows(pdat_rs, pdat_js) %>% 
+  ggplot(aes(Lag, PACF, fill = which)) + 
+  geom_col(position = "dodge") +
   scale_fill_discrete("") +
   ggtitle(title)
 ```
@@ -461,7 +462,8 @@ growing %>%
 ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
-#  geom_vline(xintercept = 30) + # not sure what this was meant for
+  # SP, I think this geom_vline() marks the boundary between 2018 (to the right) and 2019 (to the left)?
+  geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu") +
   xlab("Week of Year") + ylab("Hour of Day")
 ```
