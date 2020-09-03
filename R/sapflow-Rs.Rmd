@@ -20,8 +20,9 @@ output:
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
 ```
 
-```{r functions, include = FALSE, message = FALSE}
-# Load functions
+```{r set-up, include = FALSE, message = FALSE}
+
+# Load packages
 library(readr)
 library(tidyr)
 library(dplyr)
@@ -34,13 +35,15 @@ library(kableExtra)
 library(suncalc)
 library(ggrepel)
 
-# find matches
+# Load function to find matching days
 source(file = "find_day.R")
 
-# count observations
+# Function to track the data size as we process it
 obs_count_data <- tibble()
 step_count <- 0
 log_obs <- function(d, step_name) {
+  # `d` is a data frame
+  # `step_name` is a character description of what's done in the step
   step_count <<- step_count + 1
   d %>% 
     group_by(Tree) %>% 
@@ -52,7 +55,7 @@ log_obs <- function(d, step_name) {
   d
 }
 
-# compute rs-js correlation
+# Function to compute the correlation of Rs and Js at a designated `hour_range`
 compute_lag_cor <- function(rs, js, hour_range) {
   # `rs` and `js` are numeric vectors with the same length
   # hour_range is a numeric vector of length 2 that contains the start and end hour to lag
@@ -73,45 +76,56 @@ compute_lag_cor <- function(rs, js, hour_range) {
 ```
 
 ```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
-# Load in Rs, K, weather, and inventory data
+
+# Load in the raw data
+
+# inventory
 inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv",
                       col_types = "ccddccccdcccc")
+
+# rs chamber ports
 ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv", col_types = "dc")
+
+# species codes
 species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv",
                           col_types = "ccc")
 
+# K (sapflow) data from Baseliner
 read_csv("../SERC/baseliner_data/control_Kest_yr.csv", 
          col_names = c("Year", "DOY","Time","VPD", "PAR", paste0("C", 1:8)),
          col_types = strrep("d", 13)) %>% 
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
   separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
-  separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
+  separate(Time, c("Hour", "Min"), sep = -2) -> sapflow_raw
 
-control_hm$Hour[control_hm$Hour == ""] <- 0
+#SP needs to clarify what this does
+sapflow_raw$Hour[sapflow_raw$Hour == ""] <- 0
 
-control_hm %>% 
+# Baseliner outputs the data in an amiguous format, we want to reshape
+sapflow_raw %>% 
   mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
-  log_obs("control_hm gather") %>% 
+  log_obs("sapflow_raw gather") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   log_obs("join with inventory") %>% 
-  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> control_long
+  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> sapflow_k_long
 
-##check where licor data is coming from 
+# continuous Rs data
 read_csv("../SERC/con_licor_data_20191120.csv",
          col_types = "dTcddddddddddc") %>%
   mutate(Timestamp = force_tz(Timestamp, tz = "EST")) %>% 
   left_join(ports_lt, by = "Port") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
 
-# Load weather data
+# precipitation data
 read_csv("../SERC/met_data/SECPRE_30min.csv",
          col_types = "ccddTTddddT") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   rename(Precip = secPrecipBulk) %>% 
   select(Timestamp, Precip) -> precip
 
+# air temperature and relative humidity
 read_csv("../SERC/met_data/RH_30min.csv", 
          col_types = paste0("ccccTT", strrep("d", 24), "T")) %>% 
   filter(horizontalPosition == "000", verticalPosition == "060") %>% 
@@ -119,8 +133,10 @@ read_csv("../SERC/met_data/RH_30min.csv",
   rename(RH = RHMean, Tair = tempRHMean) %>% 
   select(Timestamp, RH, Tair) -> temprh
 
+# PAR
 read_csv("../SERC/met_data/PARPAR_30min.csv",
          col_types = paste0("ccccTT", strrep("d", 16), "T")) %>% 
+  # filter for a vertical position above the canopy
   filter(verticalPosition == "050") %>% 
   mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
   select(Timestamp, PAR = PARMean) %>%
@@ -168,6 +184,7 @@ wx_dat_no_dpar %>%
 ## Diagnostic plots for weather data
 
 ```{r weather-qaqc}
+
 # Monthly averages by hour for each variable
 wx_dat %>% 
   gather(var, value, PAR, Precip, RH, Tair) %>% 
@@ -180,7 +197,7 @@ wx_dat %>%
   labs(color = "Month", x = "Hour of Day", y = "Value") +
   geom_line() + facet_grid(var~., scales = "free")
 
-# Data by month for each variable, colored by day/night
+# Visualize data by month for each variable, colored by day/night
 wx_dat %>% 
   gather(var, value, PAR, Precip, RH, Tair) %>% 
   mutate(month = month(Timestamp),
@@ -195,7 +212,7 @@ wx_dat %>%
   labs(x = "Month", y = "Value") +
   geom_jitter() + facet_grid(var~., scales = "free")
 
-# PAR versus PAR groups
+# Visualize PAR versus PAR groups
 ggplot(wx_dat, aes(DOY, PAR)) + 
   geom_point(alpha = 0.2, color = "grey60", na.rm = TRUE) + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
@@ -203,11 +220,12 @@ ggplot(wx_dat, aes(DOY, PAR)) +
 
 
 ```{r data-cleaning, echo = FALSE, message = FALSE}
+
 # First, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
 
-control_long %>% 
-  #Then, we need to transform K to Js (sapflux density) through a conversion
+sapflow_k_long %>% 
+  # Then, we need to transform K to Js (sapflux density) through a conversion
   mutate(Js = 119* 10^(-6) * K^(1.231)) %>% 
   filter(Tree %in% rs_trees) %>% 
   log_obs("filter for rs_trees") %>% 
@@ -217,7 +235,7 @@ control_long %>%
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE),
             .groups = "drop") %>% 
-  log_obs("summarise control_long by hour") -> control_filter
+  log_obs("summarise sapflow_js by hour") -> sapflow_js
 
 ####RESOLVE THIS 
 rs_long %>%
@@ -231,12 +249,12 @@ rs_long %>%
   log_obs("summarise rs_long by hour") %>% 
   # need to replace bad T5 and SM data - column flagging data 
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
-  log_obs("filtering rs_long") -> rs_filter
+  log_obs("filtering rs_long") -> rs_formatted
 
-control_filter %>%
-  log_obs("control_filter") %>% 
-  left_join(rs_filter, by = c("Timestamp", "Tree", "Species_code")) %>% 
-  log_obs("join with rs_filter") %>% 
+sapflow_js %>%
+  log_obs("sapflow_js") %>% 
+  left_join(rs_formatted, by = c("Timestamp", "Tree", "Species_code")) %>% 
+  log_obs("join with rs_formatted") %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
   log_obs("join with wx_dat") %>% 
   complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
@@ -356,7 +374,8 @@ combined %>%
 ## Raw data over time
 
 ```{r raw-data-over-time, echo = FALSE}
-ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
+
+ggplot(data = sapflow_k_long, aes(x = Timestamp, y = K)) + 
   geom_line(na.rm = TRUE) + 
   facet_wrap(~Tree, scales = "free", ncol = 2)
 
