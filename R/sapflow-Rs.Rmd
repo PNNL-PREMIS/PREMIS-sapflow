@@ -96,20 +96,20 @@ read_csv("../SERC/baseliner_data/control_Kest_yr.csv",
          col_types = strrep("d", 13)) %>% 
   mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
   separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
-  separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
+  separate(Time, c("Hour", "Min"), sep = -2) -> sapflow_raw
 
 #SP needs to clarify what this does
-control_hm$Hour[control_hm$Hour == ""] <- 0
+sapflow_raw$Hour[sapflow_raw$Hour == ""] <- 0
 
 # Baseliner outputs the data in an amiguous format, we want to reshape
-control_hm %>% 
+sapflow_raw %>% 
   mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
   gather("Tree", "K", C1:C8) %>% 
-  log_obs("control_hm gather") %>% 
+  log_obs("sapflow_raw gather") %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
   log_obs("join with inventory") %>% 
-  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> control_long
+  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> sapflow_k_long
 
 # continuous Rs data
 read_csv("../SERC/con_licor_data_20191120.csv",
@@ -224,7 +224,7 @@ ggplot(wx_dat, aes(DOY, PAR)) +
 # Next, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
 
-control_long %>% 
+sapflow_k_long %>% 
   # Then, we need to transform K to Js (sapflux density) through a conversion
   mutate(Js = 119* 10^(-6) * K^(1.231)) %>% 
   filter(Tree %in% rs_trees) %>% 
@@ -235,7 +235,7 @@ control_long %>%
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE),
             .groups = "drop") %>% 
-  log_obs("summarise control_long by hour") -> control_filter
+  log_obs("summarise sapflow_js by hour") -> sapflow_js
 
 ####RESOLVE THIS 
 rs_long %>%
@@ -251,8 +251,8 @@ rs_long %>%
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   log_obs("filtering rs_long") -> rs_filter
 
-control_filter %>%
-  log_obs("control_filter") %>% 
+sapflow_js %>%
+  log_obs("sapflow_js") %>% 
   left_join(rs_filter) %>% 
   log_obs("join with rs_filter") %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
@@ -374,7 +374,7 @@ ggplot(combined, aes(x = Js_avg, rs_avg)) +
 ## Raw data over time
 
 ```{r raw-data-over-time, echo = FALSE}
-ggplot(data = control_long, aes(x = Timestamp, y = K)) + 
+ggplot(data = sapflow_js, aes(x = Timestamp, y = K)) + 
   geom_line() + 
   facet_wrap(~Tree, scales = "free", ncol = 2)
 
