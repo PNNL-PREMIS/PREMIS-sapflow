@@ -214,14 +214,14 @@ wx_dat %>%
 
 # Visualize PAR versus PAR groups
 ggplot(wx_dat, aes(DOY, PAR)) + 
-  geom_point(alpha = 0.2, color = "grey60") + 
+  geom_point(alpha = 0.2, color = "grey60", na.rm = TRUE) + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
 
 ```{r data-cleaning, echo = FALSE, message = FALSE}
 
-# Next, we need to filter for the Js trees that also have Rs measurements
+# First, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
 
 sapflow_k_long %>% 
@@ -253,7 +253,7 @@ rs_long %>%
 
 sapflow_js %>%
   log_obs("sapflow_js") %>% 
-  left_join(rs_formatted) %>% 
+  left_join(rs_formatted, by = c("Timestamp", "Tree", "Species_code")) %>% 
   log_obs("join with rs_formatted") %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
   log_obs("join with wx_dat") %>% 
@@ -264,18 +264,17 @@ sapflow_js %>%
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
-  group_by(Date, Tree, PAR_group) %>% 
+  group_by(Date, DOY, Tree, PAR_group) %>% 
   summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
   ungroup() %>% 
   log_obs("summarise_if by date") %>% 
   complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
-  mutate(DOY = yday(Date)) %>%  # recalculate to get rid of fractions
   log_obs("daily") -> daily
 ```
 
 ## Hysteresis between temperature and Rs / Js
 
-```{r, echo=FALSE}
+```{r hysteresis-example, echo=FALSE}
 # Make a plot showing how to interpret hysteresis figures
 hrs <- 0:23
 
@@ -334,7 +333,7 @@ hyst_plot <- function(combined_hyst, depvar) {
     geom_text_repel(data = hyst_labels, aes(label = substr(month.name[Month], 1, 3)), 
                     size = 2, color = "black",
                     nudge_y = 4,
-                    segment.colour = NA)
+                    segment.colour = NA, na.rm = TRUE)
 }
 
 hyst_plot(combined_hyst, "rs_avg")
@@ -356,7 +355,9 @@ obs_count_data %>%
 Split by daytime and nighttime values
 
 ```{r rs-js plot, echo=FALSE, message=FALSE}
-ggplot(combined, aes(x = Js_avg, rs_avg)) +
+combined %>% 
+  filter(!is.na(Js_avg), !is.na(rs_avg)) %>% 
+  ggplot(aes(x = Js_avg, rs_avg)) +
   geom_point(aes(color = Daytime), alpha = 0.5) +
   facet_wrap(~Daytime, scales = "free", ncol = 1) +
   geom_smooth(aes(group = Daytime), color = "black", method = "lm") +
@@ -368,22 +369,23 @@ ggplot(combined, aes(x = Js_avg, rs_avg)) +
                      labels = c("Nighttime", "Daytime")) +
   labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
   theme(strip.text.x = element_blank())
-
 ```
 
 ## Raw data over time
 
 ```{r raw-data-over-time, echo = FALSE}
-ggplot(data = sapflow_js, aes(x = Timestamp, y = K)) + 
-  geom_line() + 
+
+ggplot(data = sapflow_k_long, aes(x = Timestamp, y = K)) + 
+  geom_line(na.rm = TRUE) + 
   facet_wrap(~Tree, scales = "free", ncol = 2)
 
-ggplot(data = rs_formatted, aes(x = Timestamp, y = Flux)) +
-  geom_line() +
+ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
+  geom_line(na.rm = TRUE) +
   facet_wrap(~Tree, scales = "free")
 ```
 
 ## PACF
+
 The partial autocorrelation function gives the partial correlation (i.e. after controlling for other variables, or in this case, time lags) of a stationary time series with its own lagged values.
 
 - Note: There's a sharp flip in the correlation of Js values from hour 1 to 2. Interesting...
@@ -407,13 +409,13 @@ if(all(duplicated(timediffs)[-1])) {
   title <- "*** WARNING *** 'combined' has gaps or\ninconsistent difftimes"
 }
 
-pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE)
-pacf_js <- pacf(combined_pacf$Js_avg, na.action = na.pass, plot = FALSE)
-pacf_rs <- tibble(which = "R[S]", lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
-pacf_js <- tibble(which = "J[S]", lag = pacf_js$lag[,,1], PACF = pacf_js$acf[,,1])
-bind_rows(pacf_js, pacf_rs) %>% 
-  ggplot(aes(lag, PACF, fill = which)) + geom_col(position = "dodge") +
-  xlim(c(0, 23)) +
+pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pacf_js <- pacf(combined_pacf$Js_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pdat_rs <- tibble(which = "R[S]", Lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
+pdat_js <- tibble(which = "J[S]", Lag = pacf_js$lag[,,1], PACF = pacf_js$acf[,,1])
+bind_rows(pdat_rs, pdat_js) %>% 
+  ggplot(aes(Lag, PACF, fill = which)) + 
+  geom_col(position = "dodge") +
   scale_fill_discrete("") +
   ggtitle(title)
 ```
@@ -445,7 +447,7 @@ q1 %>%
   group_by(Tree) %>% 
   summarise(`Species` = Species_code[which.max(Cor)], 
             `Hour Lag` = Hour[which.max(Cor)], 
-            `Maximum Correlation` = max(Cor),
+            `Maximum Correlation` = round(max(Cor), 2),
             .groups = "drop") %>% 
   kable("html") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
@@ -479,7 +481,8 @@ growing %>%
 ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
-#  geom_vline(xintercept = 30) + # not sure what this was meant for
+  # SP, I think this geom_vline() marks the boundary between 2018 (to the right) and 2019 (to the left)?
+  geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu") +
   xlab("Week of Year") + ylab("Hour of Day")
 ```
@@ -499,14 +502,21 @@ To examine this issue, we look at matched days, i.e. that are in the same part o
 - Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
 
 ```{r sunny-cloudy-setup, echo=FALSE, message=FALSE, warning=FALSE}
-# Take full dataset and split into groups based on PAR
+# Get our list of sunny and cloudy day numbers
+# First take daily dataset and split into groups based on PAR
+
+# The Js data record is longer than the Rs one
+# So we don't get overlapping days of year, 
+combined %>% filter(!is.na(rs_avg)) %>% pull(Date) %>% min() -> rs_start
+combined %>% filter(!is.na(rs_avg)) %>% pull(Date) %>% max() -> rs_end
 daily %>% 
-  filter(!is.na(PAR_group)) %>% 
+  filter(!is.na(PAR_group), Date >= rs_start, Date <= rs_end) %>% 
   mutate(Coverage = c("Cloudy", "Medium", "Sunny")[PAR_group]) -> full_sc
 
 sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique() %>% na.omit()
 cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique() %>% na.omit()
 
+# Generate the climate data - averaging daily data across trees
 full_sc %>% 
   select(DOY, VPD, T5, SM, Precip, RH, Tair) %>% 
   group_by(DOY) %>% 
@@ -522,6 +532,10 @@ fsd <- function(sunny_days, climate_data, lookahead, constraints) {
   }
   bind_rows(matches)
 }
+
+# constraints is the set of conditions applied to determine which days are 'similar' to each other
+constraints <- c("VPD" = 0.5, "T5" = 2, "SM" = 0.2, "RH" = 10, "Tair" = 2)
+lookahead <- 10
 ```
 
 #### Constraint sensitivity test
@@ -531,35 +545,34 @@ We've created a function `similar_days` to match days of similar climate conditi
 First, we tested how the constraints for climate conditions impacted the number of matches returned
 
 ```{r sunny-cloudy-sensitivity, echo=FALSE, cache = TRUE}
-constraints <- c("VPD" = 0.5, "T5" = 2, "SM" = 0.2, "RH" = 10, "Tair" = 2)
-
 daycount <- function(constraints, lookahead = 8) {
   suppressMessages(
     nrow(fsd(sunny_days, climate_data, lookahead, constraints))
   )
 }
 
-la_seq <- 1:20
+nsens <- 10  # number of points to run for each of the below
+la_seq <- seq(1, 20, length.out = nsens)
 df1 <- tibble(variable = "lookahead",
               value = la_seq,
               daycount = sapply(la_seq, function(x) daycount(constraints, lookahead = x)))
-vpd_seq <- seq(0.01, 1, length.out = 20)
+vpd_seq <- seq(0.01, 1, length.out = nsens)
 df2 <- tibble(variable = "vpd",
               value = vpd_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("VPD" = x))))
-t5_seq <- seq(0.1, 5, length.out = 20)
+t5_seq <- seq(0.1, 5, length.out = nsens)
 df3 <- tibble(variable = "T5",
               value = t5_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("T5" = x))))
-tair_seq <- seq(1, 35, length.out = 20)
+tair_seq <- seq(1, 35, length.out = nsens)
 df4 <- tibble(variable = "Tair",
               value = tair_seq,
               daycount = sapply(vpd_seq, function(x) daycount(constraints = c("Tair" = x))))
-sm_seq <- seq(0.05, 1, length.out = 20)
+sm_seq <- seq(0.05, 1, length.out = nsens)
 df5 <- tibble(variable = "SM",
               value = sm_seq,
               daycount = sapply(sm_seq, function(x) daycount(constraints = c("SM" = x))))
-rh_seq <- seq(5, 50, length.out = 20)
+rh_seq <- seq(5, 50, length.out = nsens)
 df6 <- tibble(variable = "RH",
               value = rh_seq,
               daycount = sapply(sm_seq, function(x) daycount(constraints = c("RH" = x))))
@@ -572,27 +585,37 @@ bind_rows(df1, df2, df3, df4, df5, df6) %>%
 ```
 
 ```{r sunny-cloudy-compute, echo=FALSE, message=FALSE, warning=FALSE}
-
-constraints %>% 
-  kable("html", col.names = " ") %>% 
-  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>% 
-  add_header_above(c("Constraint", "Range"))
-
-
-# So we have a problem--seems like we're getting duplicated data?
-# Let's follow C3 day 140 through the following code and see where things are going wrong
+# Make a nice table showing constraints we've chosen relative to climate data
+climate_data %>% 
+  select(-DOY) %>% 
+  summarise_all(.funs = list(min = min, max = max, sd = sd), na.rm = TRUE) %>% 
+  gather(var, value) %>% 
+  mutate(value = round(value, 3)) %>% 
+  separate(var, into = c("Constraint", "metric")) %>% 
+  spread(metric, value) %>% 
+  left_join(tibble(Constraint = names(constraints), `Constraint value` = constraints), by = "Constraint") %>% 
+  # add the lookahead value as the final entry
+  bind_rows(tibble(Constraint = "Lookahead", `Constraint value` = lookahead)) %>% 
+  kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 
 # Find the days that are similar to the sunny days, and filter those to known cloudy days
-fsd(sunny_days, climate_data, lookahead = 8, constraints) %>% 
+fsd(sunny_days, climate_data, lookahead = lookahead, constraints) %>% 
   filter(Similar_Day %in% cloudy_days) %>% 
-  rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY
+  rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY  # sunny-cloudy matches
 
-left_join(matched_DOY, combined, by = c("Cloudy_DOY" = "DOY")) %>%
+# We have to use the hourly data ONLY during the Rs-Js overlap period
+# Otherwise we'll get duplicated DOY values from 2018 and 2019
+combined_overlap <- filter(combined, Date >= rs_start, Date <= rs_end)
+
+matched_DOY %>% 
+  left_join(combined_overlap, by = c("Cloudy_DOY" = "DOY")) %>%
   mutate(Coverage = "Cloudy") %>% 
-  rename(DOY = Cloudy_DOY, Group_No = Sunny_DOY) -> cloudy_complete
+  rename(DOY = Cloudy_DOY, Sunny_group = Sunny_DOY) -> cloudy_complete
 
-left_join(matched_DOY, combined, by = c("Sunny_DOY" = "DOY")) %>% 
-  mutate(Coverage = "Sunny", Group_No = Sunny_DOY) %>% 
+matched_DOY %>% 
+  left_join(combined_overlap, by = c("Sunny_DOY" = "DOY")) %>% 
+  mutate(Coverage = "Sunny", Sunny_group = Sunny_DOY) %>% 
   rename(DOY = Sunny_DOY) %>% 
   select(-Cloudy_DOY) -> sunny_complete
 
@@ -601,7 +624,7 @@ bind_rows(cloudy_complete, sunny_complete) -> matches_data
 # We're can only use sunny-day-groups with data in them. Compute this
 matches_data %>% 
   # for each group and sunny/cloudy, how many observations?
-  group_by(Group_No, Coverage) %>% 
+  group_by(Sunny_group, Coverage) %>% 
   summarise(Js_N = sum(is.finite(Js_avg)),
             Rs_N = sum(is.finite(rs_avg)),
             .groups = "drop_last") %>%
@@ -609,7 +632,7 @@ matches_data %>%
   summarise(Js_suncloud_avail = all(Js_N > 5),
             Rs_suncloud_avail = all(Rs_N > 5),
             .groups = "drop") %>% 
-  right_join(matches_data, by = "Group_No") %>% 
+  right_join(matches_data, by = "Sunny_group") %>% 
   filter(!is.na(Tree)) ->
   matches_data
 ```
@@ -625,44 +648,81 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
   geom_line() +
   facet_wrap(~Tree) +
   ylab("Correlation") + xlab("Hour of Day")
-
 ```
 
 ## Sunny-cloudy comparison
 
 ```{r sunny-cloudy-differences, echo = FALSE, message = FALSE}
 # Boxplots: sunny versus cloudy days
-ggplot(matches_data, aes(Tree, Js_avg, color = Coverage)) + 
-  geom_boxplot() + 
-  facet_wrap(~Tree, scales = "free")
+ggplot(matches_data, aes(as.factor(Sunny_group), Js_avg, color = Coverage)) + 
+  geom_boxplot(na.rm = TRUE) + 
+  facet_wrap(~Species_code, scales = "free")
 
-# Lags, sunny days versus cloudy
-# matches_data %>% 
-#   arrange(Timestamp) %>% 
-#   group_by(Tree, Coverage, DOY) %>% 
-#   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 13))) %>% 
-#   ggplot(aes(Hour, Cor, color = Coverage, group = paste(Coverage, DOY))) + 
-#   geom_line() + 
-#   facet_wrap(~Tree) +
-#   ggtitle("Each line is a day")
+ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) + 
+  geom_boxplot(na.rm = TRUE) + 
+  facet_wrap(~Species_code, scales = "free")
+
+
+matches_data %>% 
+  group_by(Sunny_group, Tree, Species_code, Coverage) %>% 
+  summarise(Daily_Js_avg = mean(Js_avg, na.rm = TRUE),
+            Daily_Rs_avg = mean(rs_avg, na.rm = TRUE),
+            Daily_SM = mean(SM, na.rm = TRUE),
+            .groups = "drop") ->
+  matches_daily
+
+ggplot(matches_daily, aes(Species_code, Daily_Js_avg, color = Coverage)) + geom_boxplot()
+ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + geom_boxplot()
 ```
 
-```{r sunny-cloudy-doy, echo=FALSE, fig.height=, message=FALSE}
-# Plot of sunny DOYs with cloudy DOYs
+# Stats
 
+Differences in daily means between sunny and cloudy days? We use a paired (because we have matched days)
+Student's t-test for this.
+
+```{r stats}
+# T-test for group differences
+cat("Js_avg:")
+matches_daily %>% 
+  select(Sunny_group, Tree, Coverage, Daily_Js_avg) %>% 
+  spread(Coverage, Daily_Js_avg) ->
+  tt_js
+t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
+
+cat("Rs_avg:")
+matches_daily %>% 
+  select(Sunny_group, Tree, Coverage, Daily_Rs_avg) %>% 
+  spread(Coverage, Daily_Rs_avg) ->
+  tt_js
+t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
+```
+
+
+```{r sunny-cloudy-doy, echo=FALSE, message=FALSE}
+# Plot of sunny DOYs with cloudy DOYs
 matches_data %>% 
   filter(Js_suncloud_avail) %>% 	 
   ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +	  
   geom_point() + 	  
   geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
-  facet_grid(Group_No~Tree, scales = "free")
+  facet_grid(Sunny_group~Tree, scales = "free")
 
 matches_data %>% 
   filter(Rs_suncloud_avail) %>% 
   ggplot(aes(x = hour(Timestamp), y = rs_avg, color = Coverage)) +
   geom_point() + 
   geom_line(aes(group = paste(DOY, Coverage, Tree))) +	
-  facet_grid(Group_No~Tree, scales = "free")
+  facet_grid(Sunny_group~Tree, scales = "free")
+
+# Perhaps more useful plots:
+matches_data %>% 
+  ggplot(aes(hour(Timestamp), Js_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  geom_line() + 
+  facet_wrap(~Sunny_group, scales = "free")
+matches_data %>% 
+  ggplot(aes(hour(Timestamp), rs_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  geom_line() + 
+  facet_wrap(~Sunny_group, scales = "free")
 ```
 
 ## Sunny-cloudy Q10
