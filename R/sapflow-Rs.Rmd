@@ -1,7 +1,7 @@
 ---
 title: "sapflow-Rs"
 author: "SP"
-date: "9/10/2019"
+date: "9/03/2020"
 output:
   html_document: default
 ---
@@ -261,6 +261,7 @@ sapflow_js %>%
   log_obs("combined") -> combined
 
 # At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
+# Here the data are joined and include any NAs or NaNs in any column
 
 combined %>% 
   mutate(Date = date(Timestamp)) %>% 
@@ -274,7 +275,7 @@ combined %>%
 
 ## Hysteresis between temperature and Rs / Js
 
-```{r hysteresis-example, echo=FALSE}
+```{r hysteresis-example, echo=FALSE, include = FALSE}
 # Make a plot showing how to interpret hysteresis figures
 hrs <- 0:23
 
@@ -298,6 +299,7 @@ hyst_example %>%
   facet_wrap(~lag)
 ```
 
+Arrows indicate the direction of the loop
 
 ```{r hysteresis, echo = FALSE}
 # That hysteresis plot Peishi showed was cool. Let's make one here
@@ -327,8 +329,10 @@ hyst_plot <- function(combined_hyst, depvar) {
               Js_avg = mean(Js_avg, na.rm = TRUE),
               .groups = "drop") %>% 
     ggplot(aes_string("T5", depvar, color = "Hour", group = "Month")) + 
-    geom_path(na.rm = TRUE) + 
-    scale_color_gradient2(low = "#132B43", mid = "#56B1F7", high = "#132B43", midpoint = 12) +
+    geom_path(inherit.aes = F, aes_string("T5", depvar, group = "Month"), 
+              arrow = grid::arrow(length = unit(0.08, "npc"))) + # path to draw arrow without `Hour` grouping
+    geom_path(na.rm = TRUE) + # path two draw circle with `Hour` grouping
+    scale_color_gradient2(low = "#6b4596ff", mid = "#efe350ff", high = "#593d9cff", midpoint = 12) +
     facet_wrap(~Tree) +
     geom_text_repel(data = hyst_labels, aes(label = substr(month.name[Month], 1, 3)), 
                     size = 2, color = "black",
@@ -340,10 +344,9 @@ hyst_plot(combined_hyst, "rs_avg")
 hyst_plot(combined_hyst, "Js_avg")
 ```
 
-
-## Observation counts check
-
 ```{r check-counts, echo = FALSE, include = FALSE}
+# Observation counts check
+
 obs_count_data %>% 
   filter(Tree %in% rs_trees) %>% 
   spread(Tree,n) %>% 
@@ -462,7 +465,7 @@ q1 %>%
 #### H2.1. Hypothesis. 
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
 
-- note: there's definitely an error going on at ~week 38 in C8 we need to investigate
+- note: this dataset includes data from 2018 (wet year) AND 2019 (avg year w drought in July), which might be why theres some stronger correlations. might be useful to split this graph by **year** as well 
 
 ```{r seasonal-changes, echo = FALSE}
 growing_season <- c(4, 5, 6, 7, 8, 9, 10)  # April through October
@@ -481,8 +484,6 @@ growing %>%
 ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
-  # SP, I think this geom_vline() marks the boundary between 2018 (to the right) and 2019 (to the left)?
-  geom_vline(xintercept = 30) +
   scale_fill_distiller(palette = "RdBu") +
   xlab("Week of Year") + ylab("Hour of Day")
 ```
@@ -639,7 +640,7 @@ matches_data %>%
 
 ```{r q3a, echo = FALSE, include = FALSE}
 # Lag over whole growing season by sunny vs. cloudy
-# should be using DAILY PAR FOR THIS!!!!!!!!!!!!
+
 full_sc %>%
   group_by(Tree, Coverage) %>% na.omit() %>% 
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q3a
@@ -675,7 +676,7 @@ ggplot(matches_daily, aes(Species_code, Daily_Js_avg, color = Coverage)) + geom_
 ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + geom_boxplot()
 ```
 
-# Stats
+## Stats
 
 Differences in daily means between sunny and cloudy days? We use a paired (because we have matched days)
 Student's t-test for this.
@@ -697,33 +698,45 @@ matches_daily %>%
 t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
 ```
 
+## Breakdown of each matched day
+Matched days by Tree (columns) and day of the year of the sunny day (rows). Sunny days are shown in blue with it's cloudy matches in red.
 
-```{r sunny-cloudy-doy, echo=FALSE, message=FALSE}
+```{r sc-doy-tree, echo=FALSE, message=FALSE, fig.height = 8}
 # Plot of sunny DOYs with cloudy DOYs
 matches_data %>% 
   filter(Js_suncloud_avail) %>% 	 
   ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +	  
   geom_point() + 	  
   geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
-  facet_grid(Sunny_group~Tree, scales = "free")
+  facet_grid(Sunny_group~Tree, scales = "free") +
+  labs(x = "Hour of Day", y = "Js")
 
 matches_data %>% 
   filter(Rs_suncloud_avail) %>% 
   ggplot(aes(x = hour(Timestamp), y = rs_avg, color = Coverage)) +
   geom_point() + 
   geom_line(aes(group = paste(DOY, Coverage, Tree))) +	
-  facet_grid(Sunny_group~Tree, scales = "free")
+  facet_grid(Sunny_group~Tree, scales = "free") +
+  labs(x = "Hour of Day", y = "Rs")
+```
 
+Matched days by day of the year of the sunny day. Sunny days are shown in blue with it's cloudy matches in red.
+
+```{r sc-doy, echo=FALSE, message=FALSE}
 # Perhaps more useful plots:
 matches_data %>% 
   ggplot(aes(hour(Timestamp), Js_avg, color = Coverage, group = paste(Tree, Coverage))) + 
   geom_line() + 
-  facet_wrap(~Sunny_group, scales = "free")
+  facet_wrap(~Sunny_group, scales = "free") +
+  labs(x = "Hour of Day", y = "Js")
+
 matches_data %>% 
   ggplot(aes(hour(Timestamp), rs_avg, color = Coverage, group = paste(Tree, Coverage))) + 
   geom_line() + 
-  facet_wrap(~Sunny_group, scales = "free")
-```
+  facet_wrap(~Sunny_group, scales = "free") +
+  labs(x = "Hour of Day", y = "Rs")
+
+``` 
 
 ## Sunny-cloudy Q10
 
