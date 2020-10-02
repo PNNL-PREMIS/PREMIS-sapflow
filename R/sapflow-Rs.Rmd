@@ -442,7 +442,14 @@ combined %>%
   group_by(Tree) %>%
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q1
 
+combined %>% 
+  group_by(Timestamp) %>% 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), Js = mean(Js_avg, na.rm = TRUE)) %>% 
+  do(compute_lag_cor(.$Rs, .$Js, hour_range = c(0, 23))) -> q1_eco 
+
 ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
+
+ggplot(q1_eco, aes(x = Hour, y = Cor)) + geom_line() + ggtitle("Ecosystem scale")
 
 q1 %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
@@ -476,6 +483,15 @@ combined %>%
   filter(Month %in% growing_season) -> growing # filter for growing season
 
 growing %>% 
+  group_by(Timestamp) %>% 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), 
+            Js = mean(Js_avg, na.rm = TRUE), Week = mean(Week)) %>% 
+  group_by(Week) %>% 
+  do(compute_lag_cor(.$Rs, .$Js, hour_range = c(0, 23))) %>% 
+  ungroup() %>% 
+  na.omit() -> q2_eco 
+
+growing %>% 
   group_by(Week, Tree) %>% 
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) %>% 
   ungroup() %>% 
@@ -486,6 +502,12 @@ ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) +
   facet_wrap(~Tree) + 
   scale_fill_distiller(palette = "RdBu") +
   xlab("Week of Year") + ylab("Hour of Day")
+
+ggplot(data = q2_eco, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+  geom_tile() +
+  scale_fill_distiller(palette = "RdBu") +
+  xlab("Week of Year") + ylab("Hour of Day") +ggtitle("Ecosystem Scale")
+
 ```
 
 ### Q3: Is this correlation or causation? 
