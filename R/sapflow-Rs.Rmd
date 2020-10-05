@@ -260,6 +260,15 @@ sapflow_js %>%
   complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
   log_obs("combined") -> combined
 
+# For each tree and date, grab the three rows with maximum PAR, compute the mean Js 
+# for those rows, and then merge the result back into `combined`. 
+combined %>% 
+    group_by(Tree, Date) %>% 
+    slice_max(PAR, n = 3) %>% 
+    summarise(Js_maxPAR = mean(Js_avg, na.rm = TRUE)) %>% 
+    right_join(combined, by = c("Tree", "Date")) ->
+    combined
+
 # At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
 # Here the data are joined and include any NAs or NaNs in any column
 
