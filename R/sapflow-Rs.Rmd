@@ -256,8 +256,11 @@ js_trees %>%
 rs_trees <- unique(ports_lt$Tree)
 
 sapflow_k_long %>% 
+  left_join(sapwood_area, by = "Tree") %>% 
   # Then, we need to transform K to Js (sapflux density) through a conversion
-  mutate(Js = 119* 10^(-6) * K^(1.231)) %>% 
+  mutate(Js = 119* 10^(-6) * K^(1.231)) %>%
+  # Then sapflux density to sapflux (F, cm^3/s)
+  mutate(F = Js * sw_area_cm2) %>% 
   filter(Tree %in% rs_trees) %>% 
   log_obs("filter for rs_trees") %>% 
   # Then, we need to round the timestamp to the nearest hour and take hourly averages
