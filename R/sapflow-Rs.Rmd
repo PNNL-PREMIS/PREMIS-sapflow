@@ -218,6 +218,37 @@ ggplot(wx_dat, aes(DOY, PAR)) +
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
+```{r sapwood-area, echo = FALSE}
+
+inventory %>% 
+  filter(Plot == "Control", Species_code != "FAGR") %>% 
+  drop_na(Sapflux) %>% 
+  select(Sapflux, DBH_2019, Species_code) %>% 
+  rename(Tree = Sapflux, DBH = DBH_2019, Species = Species_code) -> js_trees
+
+# To calculate sapflux, sapwood area needs to be calculated from sapwood depth
+sapwood_depth <- read_csv("~/Desktop/sapwood_depthsSERC.csv", 
+                          col_names = c("DBH", "sapwood_d", "Species"), 
+                          skip = 1) # read in randomly sampled sapwood depths at site
+
+# A linear model is used to predict our tree's sapwood area
+sd_model <- lm(sapwood_d ~ DBH * Species, data = sapwood_depth)
+
+js_trees$pred_sd <- predict.lm(object = sd_model, newdata = js_trees)
+
+# Test to make sure predictor works 
+ggplot(sapwood_depth, aes(x = DBH, y = sapwood_d, colour = Species)) + 
+  geom_point() + 
+  geom_smooth(method = lm, se =  FALSE) + 
+  geom_point(data = js_trees, aes(x = DBH, y = pred_sd, 
+                                  colour = Species), shape = 1, size = 5)
+
+js_trees %>% 
+  # calculate area of the tree and heartwood, the difference will give us sapwood area
+  mutate(t_area_cm2 = pi * (DBH / 2)^2, hw_area_cm2 = pi * ((DBH - 2 * pred_sd) / 2) ^ 2) %>% 
+  mutate(sw_area_cm2 = t_area_cm2 - hw_area_cm2) -> sapwood_area
+
+```
 
 ```{r data-cleaning, echo = FALSE, message = FALSE}
 
@@ -668,6 +699,7 @@ full_sc %>%
   do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q3a
 
 ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
+  scale_color_viridis(discrete = TRUE) +
   geom_line() +
   facet_wrap(~Tree) +
   ylab("Correlation") + xlab("Hour of Day")
@@ -679,12 +711,13 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 # Boxplots: sunny versus cloudy days
 ggplot(matches_data, aes(as.factor(Sunny_group), Js_avg, color = Coverage)) + 
   geom_boxplot(na.rm = TRUE) + 
-  facet_wrap(~Species_code, scales = "free")
+  scale_color_viridis(discrete = TRUE) #+
+  #facet_wrap(~Species_code, scales = "free")
 
 ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) + 
   geom_boxplot(na.rm = TRUE) + 
-  facet_wrap(~Species_code, scales = "free")
-
+  scale_color_viridis(discrete = TRUE) #+
+#  facet_wrap(~Species_code, scales = "free")
 
 matches_data %>% 
   group_by(Sunny_group, Tree, Species_code, Coverage) %>% 
@@ -694,8 +727,11 @@ matches_data %>%
             .groups = "drop") ->
   matches_daily
 
-ggplot(matches_daily, aes(Species_code, Daily_Js_avg, color = Coverage)) + geom_boxplot()
-ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + geom_boxplot()
+ggplot(matches_daily, aes(Species_code, Daily_Js_avg, color = Coverage)) + 
+  geom_boxplot() 
+
+ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + 
+  geom_boxplot()
 ```
 
 ## Stats
