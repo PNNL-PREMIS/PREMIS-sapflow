@@ -218,7 +218,7 @@ ggplot(wx_dat, aes(DOY, PAR)) +
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
-```{r sapwood-area, echo = FALSE}
+```{r sapwood-area-calc, echo = FALSE}
 
 inventory %>% 
   filter(Plot == "Control", Species_code != "FAGR") %>% 
@@ -268,8 +268,9 @@ sapflow_k_long %>%
   # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
   group_by(Timestamp, Tree, Species_code) %>% 
   summarise(Js_avg = mean(Js, na.rm = TRUE),
+            F_avg = mean(F, na.rm = TRUE),
             .groups = "drop") %>% 
-  log_obs("summarise sapflow_js by hour") -> sapflow_js
+  log_obs("summarise sapflow by hour") -> sapflow
 
 ####RESOLVE THIS 
 rs_long %>%
@@ -285,8 +286,8 @@ rs_long %>%
   filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
   log_obs("filtering rs_long") -> rs_formatted
 
-sapflow_js %>%
-  log_obs("sapflow_js") %>% 
+sapflow %>%
+  log_obs("sapflow") %>% 
   left_join(rs_formatted, by = c("Timestamp", "Tree", "Species_code")) %>% 
   log_obs("join with rs_formatted") %>% 
   left_join(wx_dat, by = "Timestamp") %>% 
@@ -349,6 +350,7 @@ combined_hyst %>%
             SM = round(mean(SM, na.rm = TRUE), 2),
             rs_avg = mean(rs_avg, na.rm = TRUE),
             Js_avg = mean(Js_avg, na.rm = TRUE),
+            F_avg = mean(F_avg, na.rm = TRUE),
             .groups = "drop") ->
   hyst_labels
 
@@ -361,6 +363,7 @@ hyst_plot <- function(combined_hyst, depvar) {
               SM = mean(SM, na.rm = TRUE),
               rs_avg = mean(rs_avg, na.rm = TRUE),
               Js_avg = mean(Js_avg, na.rm = TRUE),
+              F_avg = mean(F_avg, na.rm = TRUE),
               .groups = "drop") %>% 
     ggplot(aes_string("T5", depvar, color = "Hour", group = "Month")) + 
     geom_path(inherit.aes = F, aes_string("T5", depvar, group = "Month"), 
@@ -375,7 +378,7 @@ hyst_plot <- function(combined_hyst, depvar) {
 }
 
 hyst_plot(combined_hyst, "rs_avg")
-hyst_plot(combined_hyst, "Js_avg")
+hyst_plot(combined_hyst, "F_avg")
 ```
 
 ```{r check-counts, echo = FALSE, include = FALSE}
@@ -393,8 +396,8 @@ Split by daytime and nighttime values
 
 ```{r rs-js plot, echo=FALSE, message=FALSE}
 combined %>% 
-  filter(!is.na(Js_avg), !is.na(rs_avg)) %>% 
-  ggplot(aes(x = Js_avg, rs_avg)) +
+  filter(!is.na(F_avg), !is.na(rs_avg)) %>% 
+  ggplot(aes(x = F_avg, rs_avg)) +
   geom_point(aes(color = Daytime), alpha = 0.5) +
   facet_wrap(~Daytime, scales = "free", ncol = 1) +
   geom_smooth(aes(group = Daytime), color = "black", method = "lm") +
@@ -433,7 +436,7 @@ The partial autocorrelation function gives the partial correlation (i.e. after c
 combined %>% 
   group_by(Timestamp) %>% 
   summarise(rs_avg = mean(rs_avg, na.rm = TRUE),
-            Js_avg = mean(Js_avg, na.rm = TRUE),
+            F_avg = mean(F_avg, na.rm = TRUE),
             .groups = "drop") %>% 
   arrange(Timestamp) ->
   combined_pacf
@@ -447,10 +450,10 @@ if(all(duplicated(timediffs)[-1])) {
 }
 
 pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
-pacf_js <- pacf(combined_pacf$Js_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pacf_Fs <- pacf(combined_pacf$F_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
 pdat_rs <- tibble(which = "R[S]", Lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
-pdat_js <- tibble(which = "J[S]", Lag = pacf_js$lag[,,1], PACF = pacf_js$acf[,,1])
-bind_rows(pdat_rs, pdat_js) %>% 
+pdat_Fs <- tibble(which = "F[S]", Lag = pacf_Fs$lag[,,1], PACF = pacf_Fs$acf[,,1])
+bind_rows(pdat_rs, pdat_Fs) %>% 
   ggplot(aes(Lag, PACF, fill = which)) + 
   geom_col(position = "dodge") +
   scale_fill_discrete("") +
@@ -474,12 +477,12 @@ We expect there to be differences in peak lag and correlation between the two sp
 ```{r species-comparison, echo = FALSE}
 combined %>%
   group_by(Tree) %>%
-  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q1
+  do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) -> q1
 
 combined %>% 
   group_by(Timestamp) %>% 
-  summarise(Rs = mean(rs_avg, na.rm = TRUE), Js = mean(Js_avg, na.rm = TRUE)) %>% 
-  do(compute_lag_cor(.$Rs, .$Js, hour_range = c(0, 23))) -> q1_eco 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), Fs = mean(F_avg, na.rm = TRUE)) %>% 
+  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) -> q1_eco 
 
 ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
 
@@ -519,15 +522,15 @@ combined %>%
 growing %>% 
   group_by(Timestamp) %>% 
   summarise(Rs = mean(rs_avg, na.rm = TRUE), 
-            Js = mean(Js_avg, na.rm = TRUE), Week = mean(Week)) %>% 
+            Fs = mean(F_avg, na.rm = TRUE), Week = mean(Week)) %>% 
   group_by(Week) %>% 
-  do(compute_lag_cor(.$Rs, .$Js, hour_range = c(0, 23))) %>% 
+  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) %>% 
   ungroup() %>% 
   na.omit() -> q2_eco 
 
 growing %>% 
   group_by(Week, Tree) %>% 
-  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) %>% 
+  do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) %>% 
   ungroup() %>% 
   na.omit() -> cor_by_week
 
@@ -540,7 +543,7 @@ ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) +
 ggplot(data = q2_eco, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
   geom_tile() +
   scale_fill_distiller(palette = "RdBu") +
-  xlab("Week of Year") + ylab("Hour of Day") +ggtitle("Ecosystem Scale")
+  xlab("Week of Year") + ylab("Hour of Day") + ggtitle("Ecosystem Scale")
 
 ```
 
@@ -682,11 +685,11 @@ bind_rows(cloudy_complete, sunny_complete) -> matches_data
 matches_data %>% 
   # for each group and sunny/cloudy, how many observations?
   group_by(Sunny_group, Coverage) %>% 
-  summarise(Js_N = sum(is.finite(Js_avg)),
+  summarise(Fs_N = sum(is.finite(F_avg)),
             Rs_N = sum(is.finite(rs_avg)),
             .groups = "drop_last") %>%
   # which groups have sunny AND cloudy data available (six or more)?
-  summarise(Js_suncloud_avail = all(Js_N > 5),
+  summarise(F_suncloud_avail = all(Fs_N > 5),
             Rs_suncloud_avail = all(Rs_N > 5),
             .groups = "drop") %>% 
   right_join(matches_data, by = "Sunny_group") %>% 
@@ -699,7 +702,7 @@ matches_data %>%
 
 full_sc %>%
   group_by(Tree, Coverage) %>% na.omit() %>% 
-  do(compute_lag_cor(.$rs_avg, .$Js_avg, hour_range = c(0, 23))) -> q3a
+  do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) -> q3a
 
 ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
   scale_color_viridis(discrete = TRUE) +
@@ -712,7 +715,7 @@ ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) +
 
 ```{r sunny-cloudy-differences, echo = FALSE, message = FALSE}
 # Boxplots: sunny versus cloudy days
-ggplot(matches_data, aes(as.factor(Sunny_group), Js_avg, color = Coverage)) + 
+ggplot(matches_data, aes(as.factor(Sunny_group), F_avg, color = Coverage)) + 
   geom_boxplot(na.rm = TRUE) + 
   scale_color_viridis(discrete = TRUE) #+
   #facet_wrap(~Species_code, scales = "free")
@@ -724,13 +727,13 @@ ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) +
 
 matches_data %>% 
   group_by(Sunny_group, Tree, Species_code, Coverage) %>% 
-  summarise(Daily_Js_avg = mean(Js_avg, na.rm = TRUE),
+  summarise(Daily_Fs_avg = mean(F_avg, na.rm = TRUE),
             Daily_Rs_avg = mean(rs_avg, na.rm = TRUE),
             Daily_SM = mean(SM, na.rm = TRUE),
             .groups = "drop") ->
   matches_daily
 
-ggplot(matches_daily, aes(Species_code, Daily_Js_avg, color = Coverage)) + 
+ggplot(matches_daily, aes(Species_code, Daily_Fs_avg, color = Coverage)) + 
   geom_boxplot() 
 
 ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + 
@@ -744,12 +747,12 @@ Student's t-test for this.
 
 ```{r stats}
 # T-test for group differences
-cat("Js_avg:")
+cat("Fs_avg:")
 matches_daily %>% 
-  select(Sunny_group, Tree, Coverage, Daily_Js_avg) %>% 
-  spread(Coverage, Daily_Js_avg) ->
-  tt_js
-t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
+  select(Sunny_group, Tree, Coverage, Daily_Fs_avg) %>% 
+  spread(Coverage, Daily_Fs_avg) ->
+  tt_fs
+t.test(tt_fs$Cloudy, tt_fs$Sunny, paired = TRUE)
 
 cat("Rs_avg:")
 matches_daily %>% 
@@ -766,7 +769,7 @@ Matched days by Tree (columns) and day of the year of the sunny day (rows). Sunn
 # Plot of sunny DOYs with cloudy DOYs
 matches_data %>% 
   filter(Js_suncloud_avail) %>% 	 
-  ggplot(aes(x = hour(Timestamp), y = Js_avg, color = Coverage)) +	  
+  ggplot(aes(x = hour(Timestamp), y = F_avg, color = Coverage)) +	  
   geom_point() + 	  
   geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
   facet_grid(Sunny_group~Tree, scales = "free") +
@@ -786,10 +789,10 @@ Matched days by day of the year of the sunny day. Sunny days are shown in blue w
 ```{r sc-doy, echo=FALSE, message=FALSE}
 # Perhaps more useful plots:
 matches_data %>% 
-  ggplot(aes(hour(Timestamp), Js_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  ggplot(aes(hour(Timestamp), F_avg, color = Coverage, group = paste(Tree, Coverage))) + 
   geom_line() + 
   facet_wrap(~Sunny_group, scales = "free") +
-  labs(x = "Hour of Day", y = "Js")
+  labs(x = "Hour of Day", y = "Fs")
 
 matches_data %>% 
   ggplot(aes(hour(Timestamp), rs_avg, color = Coverage, group = paste(Tree, Coverage))) + 
