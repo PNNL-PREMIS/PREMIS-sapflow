@@ -302,7 +302,7 @@ sapflow %>%
 combined %>% 
     group_by(Tree, Date) %>% 
     slice_max(PAR, n = 3) %>% 
-    summarise(Js_maxPAR = mean(Js_avg, na.rm = TRUE)) %>% 
+    summarise(Fs_maxPAR = mean(F_avg, na.rm = TRUE)) %>% 
     right_join(combined, by = c("Tree", "Date")) ->
     combined
 
