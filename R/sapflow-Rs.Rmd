@@ -227,7 +227,7 @@ inventory %>%
   rename(Tree = Sapflux, DBH = DBH_2019, Species = Species_code) -> js_trees
 
 # To calculate sapflux, sapwood area needs to be calculated from sapwood depth
-sapwood_depth <- read_csv("~/Desktop/sapwood_depthsSERC.csv", 
+sapwood_depth <- read_csv("../SERC/sapwood_depthsSERC.csv", 
                           col_names = c("DBH", "sapwood_d", "Species"), 
                           skip = 1) # read in randomly sampled sapwood depths at site
 
