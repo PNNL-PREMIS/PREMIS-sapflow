@@ -245,7 +245,8 @@ ggplot(sapwood_depth, aes(x = DBH, y = sapwood_d, colour = Species)) +
 
 js_trees %>% 
   # calculate area of the tree and heartwood, the difference will give us sapwood area
-  mutate(t_area_cm2 = pi * (DBH / 2)^2, hw_area_cm2 = pi * ((DBH - 2 * pred_sd) / 2) ^ 2) %>% 
+  mutate(t_area_cm2 = pi * (DBH / 2)^2, 
+         hw_area_cm2 = pi * ((DBH - 2 * pred_sd) / 2) ^ 2) %>% 
   mutate(sw_area_cm2 = t_area_cm2 - hw_area_cm2) -> sapwood_area
 
 ```
@@ -257,8 +258,9 @@ rs_trees <- unique(ports_lt$Tree)
 
 sapflow_k_long %>% 
   left_join(sapwood_area, by = "Tree") %>% 
-  # Then, we need to transform K to Js (sapflux density) through a conversion
-  mutate(Js = 119* 10^(-6) * K^(1.231)) %>%
+  # Then, we need to transform K to Js (sapflux density) through 
+  # a conversion from Granier, A. (1987)
+  mutate(Js = 119 * 10^(-6) * K^(1.231)) %>%
   # Then sapflux density to sapflux (F, cm^3/s)
   mutate(F = Js * sw_area_cm2) %>% 
   filter(Tree %in% rs_trees) %>% 
