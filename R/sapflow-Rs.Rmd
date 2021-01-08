@@ -21,7 +21,6 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
 ```
 
 ```{r set-up, include = FALSE, message = FALSE}
-
 # Load packages
 library(readr)
 library(tidyr)
@@ -35,150 +34,9 @@ library(kableExtra)
 library(suncalc)
 library(ggrepel)
 
-# Load function to find matching days
-source(file = "find_day.R")
-
-# Function to track the data size as we process it
-obs_count_data <- tibble()
-step_count <- 0
-log_obs <- function(d, step_name) {
-  # `d` is a data frame
-  # `step_name` is a character description of what's done in the step
-  step_count <<- step_count + 1
-  d %>% 
-    group_by(Tree) %>% 
-    summarise(step = step_count,
-              step_name = step_name,
-              n = n(),
-              .groups = "drop") %>% 
-    bind_rows(obs_count_data) ->> obs_count_data
-  d
-}
-
-# Function to compute the correlation of Rs and Js at a designated `hour_range`
-compute_lag_cor <- function(rs, js, hour_range) {
-  # `rs` and `js` are numeric vectors with the same length
-  # hour_range is a numeric vector of length 2 that contains the start and end hour to lag
-  hours <- min(hour_range):max(hour_range)
-  result <- tibble(Hour = hours, Cor = NA)
-  
-  if(sum(!is.na(rs)) < 6 | sum(!is.na(js)) < 6) {
-    return(result)  # just NA
-  }
-  
-  for(i in seq_along(hours)) {
-    js_lag <- lead(js, n = hours[i])
-    result$Cor[i] <- cor(rs, js_lag, use = "na.or.complete")
-  }
-  return(result)
-}
-
-```
-
-```{r load-data, echo = FALSE, message = FALSE, warning = FALSE}
-
-# Load in the raw data
-
-# inventory
-inventory <- read_csv("../../PREMIS-stormsurge/inventory/ss-inventory.csv",
-                      col_types = "ccddccccdcccc")
-
-# rs chamber ports
-ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv", col_types = "dc")
-
-# species codes
-species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv",
-                          col_types = "ccc")
-
-# K (sapflow) data from Baseliner
-read_csv("../SERC/baseliner_data/control_Kest_yr.csv", 
-         col_names = c("Year", "DOY","Time","VPD", "PAR", paste0("C", 1:8)),
-         col_types = strrep("d", 13)) %>% 
-  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
-  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
-  separate(Time, c("Hour", "Min"), sep = -2) -> sapflow_raw
-
-#SP needs to clarify what this does
-sapflow_raw$Hour[sapflow_raw$Hour == ""] <- 0
-
-# Baseliner outputs the data in an amiguous format, we want to reshape
-sapflow_raw %>% 
-  mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
-  select(-Y, -Year, - Day, - Month) %>% 
-  gather("Tree", "K", C1:C8) %>% 
-  log_obs("sapflow_raw gather") %>% 
-  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
-  log_obs("join with inventory") %>% 
-  select(Timestamp, PAR, K, Tree, Species_code, Plot) -> sapflow_k_long
-
-# continuous Rs data
-read_csv("../SERC/con_licor_data_20191120.csv",
-         col_types = "dTcddddddddddc") %>%
-  mutate(Timestamp = force_tz(Timestamp, tz = "EST")) %>% 
-  left_join(ports_lt, by = "Port") %>% 
-  left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
-
-# precipitation data
-read_csv("../SERC/met_data/SECPRE_30min.csv",
-         col_types = "ccddTTddddT") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
-  rename(Precip = secPrecipBulk) %>% 
-  select(Timestamp, Precip) -> precip
-
-# air temperature and relative humidity
-read_csv("../SERC/met_data/RH_30min.csv", 
-         col_types = paste0("ccccTT", strrep("d", 24), "T")) %>% 
-  filter(horizontalPosition == "000", verticalPosition == "060") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
-  rename(RH = RHMean, Tair = tempRHMean) %>% 
-  select(Timestamp, RH, Tair) -> temprh
-
-# PAR
-read_csv("../SERC/met_data/PARPAR_30min.csv",
-         col_types = paste0("ccccTT", strrep("d", 16), "T")) %>% 
-  # filter for a vertical position above the canopy
-  filter(verticalPosition == "050") %>% 
-  mutate(Timestamp = ymd_hms(endDateTime, tz = "UTC")) %>% 
-  select(Timestamp, PAR = PARMean) %>%
-  left_join(precip, by = "Timestamp") %>% 
-  left_join(temprh, by = "Timestamp") %>% 
-  # At this point convert everything to EST for the rest of the analysis
-  # Note this doesn't change the times themselves, just associated time zone
-  mutate(Timestamp = with_tz(Timestamp, tzone = "EST"),
-         Timestamp = round_date(Timestamp, unit = "hour")) %>% 
-  group_by(Timestamp) %>% 
-  summarise(PAR = mean(PAR), 
-            Precip = mean(Precip), 
-            RH = mean(RH),
-            Tair = mean(Tair),
-            .groups = "drop") %>% 
-  mutate(DOY = yday(Timestamp), 
-         Date = date(Timestamp),
-         es = (6.11 *10^((7.5 * Tair)/(273.3 + Tair)))/10,
-         VPD = ((100 - RH) * es)/100) %>% 
-  select(-es) -> wx_dat_no_dpar
-
-# Compute daytime PAR as a new column
-sunlight_times <- getSunlightTimes(wx_dat_no_dpar$Date,
-                                   lat = 38.9, lon = -77, tz = "EST", 
-                                   keep = c("sunrise", "sunset"))
-wx_dat_no_dpar$sunrise <- sunlight_times$sunrise
-wx_dat_no_dpar$sunset <- sunlight_times$sunset
-wx_dat_no_dpar$Daytime <- with(wx_dat_no_dpar, Timestamp >= sunrise, Timestamp <= sunset)
-
-wx_dat_no_dpar %>% 
-  filter(Daytime) %>%   # daytime only
-  group_by(DOY) %>% 
-  summarise(Daytime_PAR = mean(PAR, na.rm = TRUE),
-            .groups = "drop") %>% 
-  # we've computed mean *daytime* PAR; now merge back in
-  right_join(wx_dat_no_dpar, by = "DOY") %>% 
-  # compute daytime PAR groups - cloudy, medium, sunny
-  group_by(month(Timestamp)) %>% 
-  mutate(PAR_group = as.factor(ntile(Daytime_PAR, 3))) %>% 
-  ungroup() %>% 
-  select(-`month(Timestamp)`) ->  # no longer needed
-  wx_dat
+source(file = "helper-functions.R")
+source(file = "data-processing.R")
+source(file = "sapwood-area-calc.R")
 ```
 
 ## Diagnostic plots for weather data
@@ -221,7 +79,7 @@ ggplot(wx_dat, aes(DOY, PAR)) +
 ```{r sapwood-area-calc, echo = FALSE}
 
 inventory %>% 
-  filter(Plot == "Control", Species_code != "FAGR") %>% 
+  filter(Plot == "Control", Species_code != "FAGR") %>% # FAGR not in analysis
   drop_na(Sapflux) %>% 
   select(Sapflux, DBH_2019, Species_code) %>% 
   rename(Tree = Sapflux, DBH = DBH_2019, Species = Species_code) -> js_trees
@@ -231,23 +89,7 @@ sapwood_depth <- read_csv("../SERC/sapwood_depthsSERC.csv",
                           col_names = c("DBH", "sapwood_d", "Species"), 
                           skip = 1) # read in randomly sampled sapwood depths at site
 
-# A linear model is used to predict our tree's sapwood area
-sd_model <- lm(sapwood_d ~ DBH * Species, data = sapwood_depth)
-
-js_trees$pred_sd <- predict.lm(object = sd_model, newdata = js_trees)
-
-# Test to make sure predictor works 
-ggplot(sapwood_depth, aes(x = DBH, y = sapwood_d, colour = Species)) + 
-  geom_point() + 
-  geom_smooth(method = lm, se =  FALSE) + 
-  geom_point(data = js_trees, aes(x = DBH, y = pred_sd, 
-                                  colour = Species), shape = 1, size = 5)
-
-js_trees %>% 
-  # calculate area of the tree and heartwood, the difference will give us sapwood area
-  mutate(t_area_cm2 = pi * (DBH / 2)^2, 
-         hw_area_cm2 = pi * ((DBH - 2 * pred_sd) / 2) ^ 2) %>% 
-  mutate(sw_area_cm2 = t_area_cm2 - hw_area_cm2) -> sapwood_area
+sapwood_area <- sapwood_area_calc(js_trees, sapwood_depth)
 
 ```
 
