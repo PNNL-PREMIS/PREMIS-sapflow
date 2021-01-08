@@ -39,6 +39,26 @@ source(file = "data-processing.R")
 source(file = "sapwood-area-calc.R")
 ```
 
+
+```{r sapwood-area-calc, echo = FALSE}
+
+inventory %>% 
+  filter(Plot == "Control", Species_code != "FAGR") %>% # FAGR not in analysis
+  drop_na(Sapflux) %>% 
+  select(Sapflux, DBH_2019, Species_code) %>% 
+  rename(Tree = Sapflux, DBH = DBH_2019, Species = Species_code) -> js_trees
+
+# To calculate sapflux, sapwood area needs to be calculated from sapwood depth
+sapwood_depth <- read_csv("../SERC/sapwood_depthsSERC.csv", 
+                          col_names = c("DBH", "sapwood_d", "Species"), 
+                          col_types = "ddc",
+                          skip = 1)
+                           # read in randomly sampled sapwood depths at site
+
+sapwood_area <- sapwood_area_calc(js_trees, sapwood_depth)
+
+```
+
 ## Diagnostic plots for weather data
 
 ```{r weather-qaqc}
@@ -76,35 +96,13 @@ ggplot(wx_dat, aes(DOY, PAR)) +
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
 ```
 
-```{r sapwood-area-calc, echo = FALSE}
-
-inventory %>% 
-  filter(Plot == "Control", Species_code != "FAGR") %>% # FAGR not in analysis
-  drop_na(Sapflux) %>% 
-  select(Sapflux, DBH_2019, Species_code) %>% 
-  rename(Tree = Sapflux, DBH = DBH_2019, Species = Species_code) -> js_trees
-
-# To calculate sapflux, sapwood area needs to be calculated from sapwood depth
-sapwood_depth <- read_csv("../SERC/sapwood_depthsSERC.csv", 
-                          col_names = c("DBH", "sapwood_d", "Species"), 
-                          skip = 1) # read in randomly sampled sapwood depths at site
-
-sapwood_area <- sapwood_area_calc(js_trees, sapwood_depth)
-
-```
-
 ```{r data-cleaning, echo = FALSE, message = FALSE}
 
 # First, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
 
 sapflow_k_long %>% 
-  left_join(sapwood_area, by = "Tree") %>% 
-  # Then, we need to transform K to Js (sapflux density) through 
-  # a conversion from Granier, A. (1987)
-  mutate(Js = 119 * 10^(-6) * K^(1.231)) %>%
-  # Then sapflux density to sapflux (F, cm^3/s)
-  mutate(F = Js * sw_area_cm2) %>% 
+  calc_sapflux(sapwood_area) %>% 
   filter(Tree %in% rs_trees) %>% 
   log_obs("filter for rs_trees") %>% 
   # Then, we need to round the timestamp to the nearest hour and take hourly averages
