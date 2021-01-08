@@ -36,6 +36,16 @@ compute_lag_cor <- function(rs, js, hour_range) {
   return(result)
 }
 
+# Function to salculate sapflux from K
+calc_sapflux <- function(sapflow_data, sapwood_area) {
+  sapflow_data %>% 
+    left_join(sapwood_area, by = "Tree") %>% 
+    # Then, we need to transform K to Js (sapflux density) through 
+    # a conversion from Granier, A. (1987)
+    mutate(Js = 119 * 10^(-6) * K^(1.231)) %>%
+    # Then sapflux density to sapflux (F, cm^3/s)
+    mutate(F = Js * sw_area_cm2)
+}
 
 ## Function to match days with similar weather conditions
 ## Created 1/20/2020 for Rs-Js analysis | Stephanie Pennington
