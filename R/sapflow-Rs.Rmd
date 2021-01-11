@@ -1,145 +1,653 @@
 ---
 title: "sapflow-Rs"
 author: "SP"
-date: "9/10/2019"
-output: html_document
+date: "9/03/2020"
+output:
+  html_document: default
 ---
 
-##Prelim plots to make:
-* figure out how to calculate Js
-* table with no of datapoints
-* available time periods
-* need table with Js, table with Rs, climate data
-* then add all to one dataframe on common time frame
-* TOD facet by month, Js/Rs lines
+**Title:** (From AGU) Using continuous sap flux and soil respiration datasets to infer the strength and speed of root-soil coupling in a deciduous forest
 
-```{r functions, echo = FALSE, message = FALSE}
-# Load functions
+**Authors:** Stephanie C. Pennington, Ben Bond-Lamberty, Charlotte Grossiord, Wenzhi Wang, Nate McDowell
+
+**Overall Scientific Question:** What is strength and speed of above-belowground coupling (Js to Rs)?
+
+### Data Prep and Preliminary Figures: 
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
+```
+
+```{r set-up, include = FALSE, message = FALSE}
+# Load packages
 library(readr)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+theme_set(theme_minimal())
 library(lubridate)
 library(viridis)
+library(wesanderson)
+library(kableExtra)
+library(suncalc)
+library(ggrepel)
 
+source(file = "helper-functions.R")
+source(file = "data-processing.R")
+source(file = "sapwood-area-calc.R")
 ```
 
-```{r load-data, echo = FALSE, message = FALSE}
-# Load in Rs, K, weather, and inventory data
-inventory <- read_csv("../../PREMIS-seawater/inventory/ss-inventory.csv")
-ports_lt <- read_csv("../../PREMIS-ghg/design/LT_portcodes.csv")
-species_codes <- read_csv("../../PREMIS-ghg/inventory_data/species_codes.csv")
+```{r sapwood-area-calc, echo = FALSE}
 
-read_csv("../SERC/baseliner_data/control_Kest_yr.csv", col_names = c("Year", "DOY","Time","VPD", "PAR", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")) %>% 
-  mutate(Date = as_date(DOY - 1, origin = "2018-01-01")) %>% 
-  separate(Date, c("Y", "Month", "Day"), sep = "-") %>% 
-  separate(Time, c("Hour", "Min"), sep = -2) -> control_hm
-  
-control_hm$Hour[control_hm$Hour == ""] <- 0
+inventory %>% 
+  filter(Plot == "Control", Species_code != "FAGR") %>% # FAGR not in analysis
+  drop_na(Sapflux) %>% 
+  select(Sapflux, DBH_2019, Species_code) %>% 
+  rename(Tree = Sapflux, DBH = DBH_2019, Species = Species_code) -> js_trees
 
-control_hm %>% 
-  mutate(Timestamp = mdy_hm(paste0(Month, "-", Day, "-", Year, " ", Hour, ":", Min))) %>%
-  select(-Y, -Year, - Day, - Month) %>% 
-  gather("Tree", "K", C1:C8) %>% 
-  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
-  select(Timestamp, VPD, PAR, K, Tree, Species_code, Plot) -> control_long
+# To calculate sapflux, sapwood area needs to be calculated from sapwood depth
+sapwood_depth <- read_csv("../SERC/sapwood_depthsSERC.csv", 
+                          col_names = c("DBH", "sapwood_d", "Species"), 
+                          col_types = "ddc",
+                          skip = 1)
+                           # read in randomly sampled sapwood depths at site
 
-read_csv("../SERC/con_licor_data_20191120.csv") %>%
-  left_join(ports_lt, by = "Port") %>% 
-  left_join(inventory, by = c("Tree" = "Sapflux"))-> rs_long
-
-##need to load in weather data
+sapwood_area <- sapwood_area_calc(js_trees, sapwood_depth)
 
 ```
 
 ```{r data-cleaning, echo = FALSE, message = FALSE}
-# Next, we need to filter for the Js trees that also have Rs measurements
+
+# First, we need to filter for the Js trees that also have Rs measurements
 rs_trees <- unique(ports_lt$Tree)
-sunrise <- 6
-sunset <- 19
 
-control_long %>% 
-  #Then, we need to transform K to Js (sapflux density) through a conversion
-  mutate(Js = 119* 10^(-4) * K^(1.231)) %>% 
+combined <- combine(rs_long, sapflow_k_long, rs_trees)
+
+# For each tree and date, grab the three rows with maximum PAR, compute the mean Js 
+# for those rows, and then merge the result back into `combined`. 
+combined %>% 
+    group_by(Tree, Date) %>% 
+    slice_max(PAR, n = 3) %>% 
+    summarise(Fs_maxPAR = mean(F_avg, na.rm = TRUE)) %>% 
+    right_join(combined, by = c("Tree", "Date")) ->
+    combined
+
+# At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
+# Here the data are joined and include any NAs or NaNs in any column
+
+combined %>% 
+  mutate(Date = date(Timestamp)) %>% 
+  group_by(Date, DOY, Tree, PAR_group) %>% 
+  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
+  ungroup() %>% 
+  log_obs("summarise_if by date") %>% 
+  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
+  log_obs("daily") -> daily
+```
+
+## Diagnostic plots for weather data
+
+```{r weather-qaqc}
+
+# Monthly averages by hour for each variable
+wx_dat %>% 
+  gather(var, value, PAR, Precip, RH, Tair) %>% 
+  mutate(month = month(Timestamp),
+         hour = hour(Timestamp)) %>% 
+  group_by(month, hour, var) %>% 
+  summarise(value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ggplot(aes(hour, value, color = as.factor(month), group = month)) + 
+  labs(color = "Month", x = "Hour of Day", y = "Value") +
+  geom_line() + facet_grid(var~., scales = "free")
+
+# Visualize data by month for each variable, colored by day/night
+wx_dat %>% 
+  gather(var, value, PAR, Precip, RH, Tair) %>% 
+  mutate(month = month(Timestamp),
+         hour = hour(Timestamp)) %>% 
+  group_by(month, Daytime, hour, var) %>% 
+  summarise(value = mean(value, na.rm = TRUE),
+            .groups = "drop") %>%
+  ggplot(aes(as.factor(month), value, color = Daytime)) + 
+  scale_color_viridis(discrete = TRUE,
+                      name = "Time of Day",
+                      labels = c("Nighttime", "Daytime")) +
+  labs(x = "Month", y = "Value") +
+  geom_jitter() + facet_grid(var~., scales = "free")
+
+# Visualize PAR versus PAR groups
+ggplot(wx_dat, aes(DOY, PAR)) + 
+  geom_point(alpha = 0.2, color = "grey60", na.rm = TRUE) + 
+  geom_point(aes(y = Daytime_PAR, color = PAR_group))
+```
+
+## Hysteresis between temperature and Rs / Js
+
+```{r hysteresis-example, echo=FALSE, include = FALSE}
+# Make a plot showing how to interpret hysteresis figures
+hrs <- 0:23
+
+lapply(seq(0, 23, by = 3), function(lg) {
+  hrs_lag <- c(hrs[(lg + 1):24], hrs[0:lg])
+  tibble(lag = lg,
+         hour = hrs, 
+         temp = sin(hrs / 24 * 2 * pi), 
+         resp = sin(hrs_lag / 24 * 2 * pi))
+}) %>% 
+  bind_rows() ->
+  hyst_example
+
+hyst_example %>%
+  gather(var, value, temp, resp) %>% 
+  ggplot(aes(hour, value, color = var)) + geom_jitter() + facet_wrap(~lag)
+hyst_example %>% 
+  mutate(hour_lbl = if_else(hour %% 2 == 0, as.character(hour), "")) %>% 
+  ggplot(aes(temp, resp)) + geom_path(arrow = grid::arrow()) +
+  geom_text(aes(label = hour_lbl), size = 2, nudge_y = .1) +
+  facet_wrap(~lag)
+```
+
+Arrows indicate the direction of the loop
+
+```{r hysteresis, echo = FALSE}
+# That hysteresis plot Peishi showed was cool. Let's make one here
+combined %>% 
+  mutate(Month = month(Timestamp), 
+         Hour = hour(Timestamp)) ->
+  combined_hyst
+
+# Compute mean T5, Rs, and Js by month so we can make nice labels
+combined_hyst %>% 
+  group_by(Tree, Month) %>% 
+  summarise(T5 = mean(T5, na.rm = TRUE),
+            SM = round(mean(SM, na.rm = TRUE), 2),
+            rs_avg = mean(rs_avg, na.rm = TRUE),
+            Js_avg = mean(Js_avg, na.rm = TRUE),
+            F_avg = mean(F_avg, na.rm = TRUE),
+            .groups = "drop") ->
+  hyst_labels
+
+# Utility plotting function
+library(ggrepel)
+hyst_plot <- function(combined_hyst, depvar) {
+  combined_hyst %>% 
+    group_by(Tree, Month, Hour) %>% 
+    summarise(T5 = mean(T5, na.rm = TRUE),
+              SM = mean(SM, na.rm = TRUE),
+              rs_avg = mean(rs_avg, na.rm = TRUE),
+              Js_avg = mean(Js_avg, na.rm = TRUE),
+              F_avg = mean(F_avg, na.rm = TRUE),
+              .groups = "drop") %>% 
+    ggplot(aes_string("T5", depvar, color = "Hour", group = "Month")) + 
+    geom_path(inherit.aes = F, aes_string("T5", depvar, group = "Month"), 
+              arrow = grid::arrow(length = unit(0.08, "npc"))) + # path to draw arrow without `Hour` grouping
+    geom_path(na.rm = TRUE) + # path two draw circle with `Hour` grouping
+    scale_color_gradient2(low = "#6b4596ff", mid = "#efe350ff", high = "#593d9cff", midpoint = 12) +
+    facet_wrap(~Tree) +
+    geom_text_repel(data = hyst_labels, aes(label = substr(month.name[Month], 1, 3)), 
+                    size = 2, color = "black",
+                    nudge_y = 4,
+                    segment.colour = NA, na.rm = TRUE)
+}
+
+hyst_plot(combined_hyst, "rs_avg")
+hyst_plot(combined_hyst, "F_avg")
+```
+
+```{r check-counts, echo = FALSE, include = FALSE}
+# Observation counts check
+
+obs_count_data %>% 
   filter(Tree %in% rs_trees) %>% 
-  # Then, we need to round the timestamp to the nearest hour and take hourly averages
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
-  # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
-  group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js)) -> control_filter
-
-control_filter %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Species_code) %>% 
-  summarise(Js_havg = mean(Js_avg, na.rm = TRUE)) -> control_havg
-
-rs_long %>% 
-  filter(Flux > 0, Flux < 25) %>% 
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
-  group_by(Timestamp, Species_code) %>% 
-  summarise(rs_avg = mean(Flux)) -> rs_filter
-
-rs_filter %>% 
-  mutate(Hour = hour(Timestamp)) %>% 
-  group_by(Hour, Species_code) %>% 
-  summarise(rs_havg = mean(rs_avg, na.rm = TRUE)) -> rs_havg
-
-left_join(rs_havg, control_havg)  %>% 
-  mutate(Daytime = if_else(Hour > sunrise & Hour < sunset, TRUE, FALSE)) %>% 
-  left_join(species_codes)-> hourly
-
-gather(hourly, key = "Type", value = "Value", rs_havg:Js_havg) -> hourly_long
-
-left_join(control_filter, rs_filter) -> combined
-  
+  spread(Tree,n) %>% 
+  kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-```{r hour-of-day}
-rs_min <- 4
-rs_max <- 6
-hourly_long[which(hourly_long$Type == "Js_havg"), ] -> x
+## Js versus Rs
+Split by daytime and nighttime values
 
-hourly_long %>% 
-  ungroup %>% 
-  filter(Type == "Js_havg") %>% 
-  select(-Value) %>% 
-  mutate(Value  = (rs_max - rs_min) * ((x$Value - min(x$Value))/(max(x$Value) - min(x$Value))) + rs_min) -> hourly_check
-
-hourly_long %>% 
-  filter(Type == "rs_havg") %>% 
-  bind_rows(hourly_check) -> hourly_norm
-
-ggplot(filter(hourly_norm), aes(x = Hour, y = Value, color = Type, group = Type)) +
-  geom_line() +
-  geom_point(size = 1) +
-  scale_color_viridis(discrete = TRUE, 
-                      option = "D", 
-                      begin =0.7, 
-                      end = 0.4,
-                      labels = c("Js", "Rs")) +
-  labs(x = "Hour of Day", y = "Value") +
-  facet_wrap(~Species) + 
-  theme_minimal() +
-  theme(strip.text.x = element_text(face = "bold.italic", size = 12)) 
-  
-```
-
-```{r rs-js}
-ggplot(hourly, aes(x = Js_havg, rs_havg)) +
-  geom_point(aes(color = Daytime)) +
-  geom_smooth(aes(group = Daytime, color = Daytime, fill = Daytime), method = "lm") +
+```{r rs-js plot, echo=FALSE, message=FALSE}
+combined %>% 
+  filter(!is.na(F_avg), !is.na(rs_avg)) %>% 
+  ggplot(aes(x = F_avg, rs_avg)) +
+  geom_point(aes(color = Daytime), alpha = 0.5) +
+  facet_wrap(~Daytime, scales = "free", ncol = 1) +
+  geom_smooth(aes(group = Daytime), color = "black", method = "lm") +
   scale_color_viridis(discrete = TRUE,
                       name = "Time of Day",
                       labels = c("Nighttime", "Daytime")) +
   scale_fill_viridis(discrete = TRUE,
                      name = "Time of Day",
                      labels = c("Nighttime", "Daytime")) +
-  labs(x = "Js (cm/s)", y = "Rs (umol/m/s)") +
-  theme_minimal()
+  labs(x = "Js (m/s)", y = "Rs (umol/m/s)") +
+  theme(strip.text.x = element_blank())
 ```
 
+## Raw data over time
 
-Number of Js obs: `r sum(complete.cases(combined$Js_avg))`
-Number of Rs obs: `r sum(complete.cases(combined$rs_avg))`
+```{r raw-data-over-time, echo = FALSE}
 
+ggplot(data = sapflow_k_long, aes(x = Timestamp, y = K)) + 
+  geom_line(na.rm = TRUE) + 
+  facet_wrap(~Tree, scales = "free", ncol = 2)
 
+ggplot(data = rs_long, aes(x = Timestamp, y = Flux)) +
+  geom_line(na.rm = TRUE) +
+  facet_wrap(~Tree, scales = "free")
+```
+
+## PACF
+
+The partial autocorrelation function gives the partial correlation (i.e. after controlling for other variables, or in this case, time lags) of a stationary time series with its own lagged values.
+
+- Note: There's a sharp flip in the correlation of Js values from hour 1 to 2. Interesting...
+
+```{r pacf, echo = FALSE}
+
+# Average across chambers and trees for each timestamp
+combined %>% 
+  group_by(Timestamp) %>% 
+  summarise(rs_avg = mean(rs_avg, na.rm = TRUE),
+            F_avg = mean(F_avg, na.rm = TRUE),
+            .groups = "drop") %>% 
+  arrange(Timestamp) ->
+  combined_pacf
+
+# Prerequisite: the time series shouldn't have any gaps
+timediffs <- diff(combined_pacf$Timestamp)
+if(all(duplicated(timediffs)[-1])) {
+  title <- ""
+} else {
+  title <- "*** WARNING *** 'combined' has gaps or\ninconsistent difftimes"
+}
+
+pacf_rs <- pacf(combined_pacf$rs_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pacf_Fs <- pacf(combined_pacf$F_avg, na.action = na.pass, plot = FALSE, lag.max = 23)
+pdat_rs <- tibble(which = "R[S]", Lag = pacf_rs$lag[,,1], PACF = pacf_rs$acf[,,1])
+pdat_Fs <- tibble(which = "F[S]", Lag = pacf_Fs$lag[,,1], PACF = pacf_Fs$acf[,,1])
+bind_rows(pdat_rs, pdat_Fs) %>% 
+  ggplot(aes(Lag, PACF, fill = which)) + 
+  geom_col(position = "dodge") +
+  scale_fill_discrete("") +
+  ggtitle(title)
+```
+
+## Science Questions.
+
+### Q1: For the overall dataset, how correlated are Js and Rs, at what time lags? 
+(Between the fluxes; here and afterward, on a per-tree basis.)
+
+- Whole dataset
+- Compute lag correlation for each tree - each timestamp hour
+
+#### H1.1. Hypothesis-time. 
+Js and Rs will be correlated at some lag of (probably) multiple hours, because of the time it takes for sap to ascend; photosynthesis to occur; phloem to descend to roots; respiration to occur; and resulting CO2 to diffuse to soil surface .
+
+#### H1.2 Hypothesis-species. 
+We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
+
+```{r species-comparison, echo = FALSE}
+combined %>%
+  group_by(Tree) %>%
+  do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) -> q1
+
+combined %>% 
+  group_by(Timestamp) %>% 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), Fs = mean(F_avg, na.rm = TRUE)) %>% 
+  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) -> q1_eco 
+
+ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
+
+ggplot(q1_eco, aes(x = Hour, y = Cor)) + geom_line() + ggtitle("Ecosystem scale")
+
+q1 %>% 
+  left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
+  select(Tree, Species_code, Hour, Cor) %>% 
+  group_by(Tree) %>% 
+  summarise(`Species` = Species_code[which.max(Cor)], 
+            `Hour Lag` = Hour[which.max(Cor)], 
+            `Maximum Correlation` = round(max(Cor), 2),
+            .groups = "drop") %>% 
+  kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+```
+
+### Q2: How does this change over the course of the growing season? 
+
+- For each week of year, calculate the correlation between Js and Rs for each hour lag (using function) and pull out max correlation lag
+- Dendrometer data to show growth changes?
+
+#### H2.1. Hypothesis. 
+We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
+
+- note: this dataset includes data from 2018 (wet year) AND 2019 (avg year w drought in July), which might be why theres some stronger correlations. might be useful to split this graph by **year** as well 
+
+```{r seasonal-changes, echo = FALSE}
+growing_season <- c(4, 5, 6, 7, 8, 9, 10)  # April through October
+
+combined %>% 
+  mutate(Month = month(Timestamp), 
+         Week = week(Timestamp)) %>% 
+  filter(Month %in% growing_season) -> growing # filter for growing season
+
+growing %>% 
+  group_by(Timestamp) %>% 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), 
+            Fs = mean(F_avg, na.rm = TRUE), Week = mean(Week)) %>% 
+  group_by(Week) %>% 
+  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) %>% 
+  ungroup() %>% 
+  na.omit() -> q2_eco 
+
+growing %>% 
+  group_by(Week, Tree) %>% 
+  do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) %>% 
+  ungroup() %>% 
+  na.omit() -> cor_by_week
+
+ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+  geom_tile() + 
+  facet_wrap(~Tree) + 
+  scale_fill_distiller(palette = "RdBu") +
+  xlab("Week of Year") + ylab("Hour of Day")
+
+ggplot(data = q2_eco, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+  geom_tile() +
+  scale_fill_distiller(palette = "RdBu") +
+  xlab("Week of Year") + ylab("Hour of Day") + ggtitle("Ecosystem Scale")
+
+```
+
+### Q3: Is this correlation or causation? 
+
+#### H3.1. Hypothesis. 
+If H1.1 is correct, then days with more sunlight would have a stronger correlation.
+
+To examine this issue, we look at matched days, i.e. that are in the same part of the growing season and have similar conditions EXCEPT for sunlight.
+
+**Goal:** To compare Rs:Js correlation of sunny vs. cloudy days. We essentially are testing the importance of PAR on the relationship.
+
+- Rs, Js, and climate variables parsed to same timescale
+- Data separated into **sunny days** (top 1/3 _daytime_ PAR) and **cloudy days** (bottom 1/3 _daytime_ PAR)
+- Just the matched days, how do the max-cor-lags differ between them?
+- Tree, DOY, Match_doy, Max_Cor, Lag_max_cor, Coverage
+
+```{r sunny-cloudy-setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Get our list of sunny and cloudy day numbers
+# First take daily dataset and split into groups based on PAR
+
+# The Js data record is longer than the Rs one
+# So we don't get overlapping days of year, 
+combined %>% filter(!is.na(rs_avg)) %>% pull(Date) %>% min() -> rs_start
+combined %>% filter(!is.na(rs_avg)) %>% pull(Date) %>% max() -> rs_end
+daily %>% 
+  filter(!is.na(PAR_group), Date >= rs_start, Date <= rs_end) %>% 
+  mutate(Coverage = c("Cloudy", "Medium", "Sunny")[PAR_group]) -> full_sc
+
+sunny_days <- filter(full_sc, Coverage == "Sunny") %>% pull(DOY) %>% unique() %>% na.omit()
+cloudy_days <- filter(full_sc, Coverage == "Cloudy") %>% pull(DOY) %>% unique() %>% na.omit()
+
+# Generate the climate data - averaging daily data across trees
+full_sc %>% 
+  select(DOY, VPD, T5, SM, Precip, RH, Tair) %>% 
+  group_by(DOY) %>% 
+  summarise_all(mean, na.rm = TRUE) ->
+  climate_data
+
+# fsd - find similar days for sunny_days (numeric vector)
+fsd <- function(sunny_days, climate_data, lookahead, constraints) {
+  matches <- list()
+  for(sd in sunny_days) {
+    matches[[sd]] <- tibble(DOY = sd,
+                            Similar_Day = similar_days(sd, climate_data, lookahead, constraints))
+  }
+  bind_rows(matches)
+}
+
+# constraints is the set of conditions applied to determine which days are 'similar' to each other
+constraints <- c("VPD" = 0.5, "T5" = 2, "SM" = 0.2, "RH" = 10, "Tair" = 2)
+lookahead <- 10
+```
+
+#### Constraint sensitivity test
+
+We've created a function `similar_days` to match days of similar climate conditions but varying PAR (i.e. sunny-cloudy days)
+
+First, we tested how the constraints for climate conditions impacted the number of matches returned
+
+```{r sunny-cloudy-sensitivity, echo=FALSE, cache = TRUE}
+daycount <- function(constraints, lookahead = 8) {
+  suppressMessages(
+    nrow(fsd(sunny_days, climate_data, lookahead, constraints))
+  )
+}
+
+nsens <- 10  # number of points to run for each of the below
+la_seq <- seq(1, 20, length.out = nsens)
+df1 <- tibble(variable = "lookahead",
+              value = la_seq,
+              daycount = sapply(la_seq, function(x) daycount(constraints, lookahead = x)))
+vpd_seq <- seq(0.01, 1, length.out = nsens)
+df2 <- tibble(variable = "vpd",
+              value = vpd_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("VPD" = x))))
+t5_seq <- seq(0.1, 5, length.out = nsens)
+df3 <- tibble(variable = "T5",
+              value = t5_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("T5" = x))))
+tair_seq <- seq(1, 35, length.out = nsens)
+df4 <- tibble(variable = "Tair",
+              value = tair_seq,
+              daycount = sapply(vpd_seq, function(x) daycount(constraints = c("Tair" = x))))
+sm_seq <- seq(0.05, 1, length.out = nsens)
+df5 <- tibble(variable = "SM",
+              value = sm_seq,
+              daycount = sapply(sm_seq, function(x) daycount(constraints = c("SM" = x))))
+rh_seq <- seq(5, 50, length.out = nsens)
+df6 <- tibble(variable = "RH",
+              value = rh_seq,
+              daycount = sapply(sm_seq, function(x) daycount(constraints = c("RH" = x))))
+
+bind_rows(df1, df2, df3, df4, df5, df6) %>% 
+  ggplot(aes(value, daycount)) + 
+  geom_line() +
+  xlab("Constraint value") + ylab("Number of matched days") +
+  facet_wrap(~variable, scales = "free")
+```
+
+```{r sunny-cloudy-compute, echo=FALSE, message=FALSE, warning=FALSE}
+# Make a nice table showing constraints we've chosen relative to climate data
+climate_data %>% 
+  select(-DOY) %>% 
+  summarise_all(.funs = list(min = min, max = max, sd = sd), na.rm = TRUE) %>% 
+  gather(var, value) %>% 
+  mutate(value = round(value, 3)) %>% 
+  separate(var, into = c("Constraint", "metric")) %>% 
+  spread(metric, value) %>% 
+  left_join(tibble(Constraint = names(constraints), `Constraint value` = constraints), by = "Constraint") %>% 
+  # add the lookahead value as the final entry
+  bind_rows(tibble(Constraint = "Lookahead", `Constraint value` = lookahead)) %>% 
+  kable("html") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+# Find the days that are similar to the sunny days, and filter those to known cloudy days
+fsd(sunny_days, climate_data, lookahead = lookahead, constraints) %>% 
+  filter(Similar_Day %in% cloudy_days) %>% 
+  rename(Sunny_DOY = DOY, Cloudy_DOY = Similar_Day) -> matched_DOY  # sunny-cloudy matches
+
+# We have to use the hourly data ONLY during the Rs-Js overlap period
+# Otherwise we'll get duplicated DOY values from 2018 and 2019
+combined_overlap <- filter(combined, Date >= rs_start, Date <= rs_end)
+
+matched_DOY %>% 
+  left_join(combined_overlap, by = c("Cloudy_DOY" = "DOY")) %>%
+  mutate(Coverage = "Cloudy") %>% 
+  rename(DOY = Cloudy_DOY, Sunny_group = Sunny_DOY) -> cloudy_complete
+
+matched_DOY %>% 
+  left_join(combined_overlap, by = c("Sunny_DOY" = "DOY")) %>% 
+  mutate(Coverage = "Sunny", Sunny_group = Sunny_DOY) %>% 
+  rename(DOY = Sunny_DOY) %>% 
+  select(-Cloudy_DOY) -> sunny_complete
+
+bind_rows(cloudy_complete, sunny_complete) -> matches_data
+
+# We're can only use sunny-day-groups with data in them. Compute this
+matches_data %>% 
+  # for each group and sunny/cloudy, how many observations?
+  group_by(Sunny_group, Coverage) %>% 
+  summarise(Fs_N = sum(is.finite(F_avg)),
+            Rs_N = sum(is.finite(rs_avg)),
+            .groups = "drop_last") %>%
+  # which groups have sunny AND cloudy data available (six or more)?
+  summarise(F_suncloud_avail = all(Fs_N > 5),
+            Rs_suncloud_avail = all(Rs_N > 5),
+            .groups = "drop") %>% 
+  right_join(matches_data, by = "Sunny_group") %>% 
+  filter(!is.na(Tree)) ->
+  matches_data
+```
+
+```{r q3a, echo = FALSE, include = FALSE}
+# Lag over whole growing season by sunny vs. cloudy
+
+full_sc %>%
+  group_by(Tree, Coverage) %>% na.omit() %>% 
+  do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) -> q3a
+
+ggplot(data = q3a, aes(x = Hour, y = Cor, color = Coverage, group = Coverage)) + 
+  scale_color_viridis(discrete = TRUE) +
+  geom_line() +
+  facet_wrap(~Tree) +
+  ylab("Correlation") + xlab("Hour of Day")
+```
+
+## Sunny-cloudy comparison
+
+```{r sunny-cloudy-differences, echo = FALSE, message = FALSE}
+# Boxplots: sunny versus cloudy days
+ggplot(matches_data, aes(as.factor(Sunny_group), F_avg, color = Coverage)) + 
+  geom_boxplot(na.rm = TRUE) + 
+  scale_color_viridis(discrete = TRUE) #+
+  #facet_wrap(~Species_code, scales = "free")
+
+ggplot(matches_data, aes(Tree, rs_avg, color = Coverage)) + 
+  geom_boxplot(na.rm = TRUE) + 
+  scale_color_viridis(discrete = TRUE) #+
+#  facet_wrap(~Species_code, scales = "free")
+
+matches_data %>% 
+  group_by(Sunny_group, Tree, Species_code, Coverage) %>% 
+  summarise(Daily_Fs_avg = mean(F_avg, na.rm = TRUE),
+            Daily_Rs_avg = mean(rs_avg, na.rm = TRUE),
+            Daily_SM = mean(SM, na.rm = TRUE),
+            .groups = "drop") ->
+  matches_daily
+
+ggplot(matches_daily, aes(Species_code, Daily_Fs_avg, color = Coverage)) + 
+  geom_boxplot() 
+
+ggplot(matches_daily, aes(Species_code, Daily_Rs_avg, color = Coverage)) + 
+  geom_boxplot()
+```
+
+## Stats
+
+Differences in daily means between sunny and cloudy days? We use a paired (because we have matched days)
+Student's t-test for this.
+
+```{r stats}
+# T-test for group differences
+cat("Fs_avg:")
+matches_daily %>% 
+  select(Sunny_group, Tree, Coverage, Daily_Fs_avg) %>% 
+  spread(Coverage, Daily_Fs_avg) ->
+  tt_fs
+t.test(tt_fs$Cloudy, tt_fs$Sunny, paired = TRUE)
+
+cat("Rs_avg:")
+matches_daily %>% 
+  select(Sunny_group, Tree, Coverage, Daily_Rs_avg) %>% 
+  spread(Coverage, Daily_Rs_avg) ->
+  tt_js
+t.test(tt_js$Cloudy, tt_js$Sunny, paired = TRUE)
+```
+
+## Breakdown of each matched day
+Matched days by Tree (columns) and day of the year of the sunny day (rows). Sunny days are shown in blue with it's cloudy matches in red.
+
+```{r sc-doy-tree, echo=FALSE, message=FALSE, fig.height = 8}
+# Plot of sunny DOYs with cloudy DOYs
+matches_data %>% 
+  filter(F_suncloud_avail) %>% 	 
+  ggplot(aes(x = hour(Timestamp), y = F_avg, color = Coverage)) +	  
+  geom_point() + 	  
+  geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
+  facet_grid(Sunny_group~Tree, scales = "free") +
+  labs(x = "Hour of Day", y = "Js")
+
+matches_data %>% 
+  filter(Rs_suncloud_avail) %>% 
+  ggplot(aes(x = hour(Timestamp), y = rs_avg, color = Coverage)) +
+  geom_point() + 
+  geom_line(aes(group = paste(DOY, Coverage, Tree))) +	
+  facet_grid(Sunny_group~Tree, scales = "free") +
+  labs(x = "Hour of Day", y = "Rs")
+```
+
+Matched days by day of the year of the sunny day. Sunny days are shown in blue with it's cloudy matches in red.
+
+```{r sc-doy, echo=FALSE, message=FALSE}
+# Perhaps more useful plots:
+matches_data %>% 
+  ggplot(aes(hour(Timestamp), F_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  geom_line() + 
+  facet_wrap(~Sunny_group, scales = "free") +
+  labs(x = "Hour of Day", y = "Fs")
+
+matches_data %>% 
+  ggplot(aes(hour(Timestamp), rs_avg, color = Coverage, group = paste(Tree, Coverage))) + 
+  geom_line() + 
+  facet_wrap(~Sunny_group, scales = "free") +
+  labs(x = "Hour of Day", y = "Rs")
+
+``` 
+
+## Sunny-cloudy Q10
+
+```{r sunny-cloudy-q10, echo = FALSE, message = FALSE}
+
+## Sunny Q10
+sunny <- filter(matches_data, Coverage == "Sunny", !is.na(T5), !is.na(rs_avg))
+model_s <- lm(log(rs_avg) ~ T5, data = sunny)
+sunny$prediction <- exp(predict(model_s))
+# ggplot(daytime, aes(x = T5, y = rs_avg)) + 
+#   geom_point() +
+#   geom_line(data = daytime, aes(y = prediction), linetype = 2)
+# cat("Model Q10 =", exp(10 ^ model_d$coefficients[2]))
+
+## Cloudy Q10
+cloudy <- filter(matches_data, Coverage == "Cloudy", !is.na(T5), !is.na(rs_avg))
+model_c <- lm(log(rs_avg) ~ T5, data = cloudy)
+cloudy$prediction <- exp(predict(model_c))
+# ggplot(nighttime, aes(x = T5, y = rs_avg)) + 
+#   geom_point() + 
+#   geom_line(data = nighttime, aes(y = prediction), linetype = 2)
+# cat("Model Q10 =", exp(10 ^ model_n$coefficients[2]))
+
+## Plot
+ggplot(matches_data, aes(x = T5, y = rs_avg, color = Coverage)) + 
+  geom_point(alpha = 0.3) +
+  scale_color_viridis(discrete = TRUE) +
+  ylab("Rs") +
+  annotate("text", x = 10, y = 21.5, 
+           label = paste("Q10 =", round(exp(10 ^ model_s$coefficients[2]), digits = 3)), 
+           color = "#FDE725FF") +
+  annotate("text", x = 10, y = 20, 
+           label = paste("Q10=", round(exp(10 ^ model_c$coefficients[2]), digits = 3)), 
+           color = "#440154FF")
+
+```

@@ -2,14 +2,21 @@
 
 # RStudio files
 .Rproj.user/
+R/sapflow-Rs.html
 
 # Session data files
 .RData
-R/PREMIS-sapflow.Rproj
 
 # History files
-R/.Rhistory
+.Rhistory
 *.xml
 .Rproj.user
+
+*.html
+html/*.png
+html-figures/
 R/sapflow-Rs.html
+R/sapflow-Rs_cache/html/__packages
+
+# OS crap
 .DS_Store
