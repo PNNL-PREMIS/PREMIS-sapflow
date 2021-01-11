@@ -582,7 +582,7 @@ Matched days by Tree (columns) and day of the year of the sunny day (rows). Sunn
 ```{r sc-doy-tree, echo=FALSE, message=FALSE, fig.height = 8}
 # Plot of sunny DOYs with cloudy DOYs
 matches_data %>% 
-  filter(Js_suncloud_avail) %>% 	 
+  filter(F_suncloud_avail) %>% 	 
   ggplot(aes(x = hour(Timestamp), y = F_avg, color = Coverage)) +	  
   geom_point() + 	  
   geom_line(aes(group = paste(DOY, Coverage, Tree))) + 
