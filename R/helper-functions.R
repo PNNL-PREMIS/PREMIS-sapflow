@@ -47,6 +47,52 @@ calc_sapflux <- function(sapflow_data, sapwood_area) {
     mutate(F = Js * sw_area_cm2)
 }
 
+# Function to combine rs, sapflow, and weather data into one dataframe on a consisten timestamp
+combine <- function(rs, sapflow, rs_trees) {
+  # `rs` is a dataframe of continuous soil respiration data
+  # `sapflow` is a dataframe of continuous sapflow data
+  # `rs_trees` is a character vector of rs tree labels
+  # returns a combined dataframe for analysis
+  
+  #First, we need to put sapflow and rs data on a similar timestamp so we can join 
+  sapflow %>% 
+    calc_sapflux(sapwood_area) %>% 
+    filter(Tree %in% rs_trees) %>% 
+    log_obs("filter for rs_trees") %>% 
+    # Then, we need to round the timestamp to the nearest hour and take hourly averages
+    mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
+    # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
+    group_by(Timestamp, Tree, Species_code) %>% 
+    summarise(Js_avg = mean(Js, na.rm = TRUE),
+              F_avg = mean(F, na.rm = TRUE),
+              .groups = "drop") %>% 
+    log_obs("summarise sapflow by hour") -> sf
+  
+  rs %>%
+    log_obs("initial rs_long") %>% 
+    mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
+    group_by(Timestamp, Tree, Species_code) %>%
+    summarise(rs_avg = mean(Flux), 
+              T5 = mean(T5, na.rm = TRUE), 
+              SM = mean(SMoist, na.rm = TRUE),
+              .groups = "drop") %>% 
+    log_obs("summarise rs_long by hour") %>% 
+    # need to replace bad T5 and SM data - column flagging data 
+    filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
+    log_obs("filtering rs_long") -> rs_formatted
+  
+  # Joins all 3 dataframes together for easy analysis and comparison
+  sf %>%
+    log_obs("sapflow") %>% 
+    left_join(rs_formatted, by = c("Timestamp", "Tree", "Species_code")) %>% 
+    log_obs("join with rs_formatted") %>% 
+    left_join(wx_dat, by = "Timestamp") %>% 
+    log_obs("join with wx_dat") %>% 
+    complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
+    log_obs("combined")
+  
+}
+
 ## Function to match days with similar weather conditions
 ## Created 1/20/2020 for Rs-Js analysis | Stephanie Pennington
 
