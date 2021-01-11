@@ -10,8 +10,6 @@ output:
 
 **Authors:** Stephanie C. Pennington, Ben Bond-Lamberty, Charlotte Grossiord, Wenzhi Wang, Nate McDowell
 
-**Target Journal:**
-
 **Overall Scientific Question:** What is strength and speed of above-belowground coupling (Js to Rs)?
 
 ### Data Prep and Preliminary Figures: 
@@ -39,7 +37,6 @@ source(file = "data-processing.R")
 source(file = "sapwood-area-calc.R")
 ```
 
-
 ```{r sapwood-area-calc, echo = FALSE}
 
 inventory %>% 
@@ -57,6 +54,35 @@ sapwood_depth <- read_csv("../SERC/sapwood_depthsSERC.csv",
 
 sapwood_area <- sapwood_area_calc(js_trees, sapwood_depth)
 
+```
+
+```{r data-cleaning, echo = FALSE, message = FALSE}
+
+# First, we need to filter for the Js trees that also have Rs measurements
+rs_trees <- unique(ports_lt$Tree)
+
+combined <- combine(rs_long, sapflow_k_long, rs_trees)
+
+# For each tree and date, grab the three rows with maximum PAR, compute the mean Js 
+# for those rows, and then merge the result back into `combined`. 
+combined %>% 
+    group_by(Tree, Date) %>% 
+    slice_max(PAR, n = 3) %>% 
+    summarise(Fs_maxPAR = mean(F_avg, na.rm = TRUE)) %>% 
+    right_join(combined, by = c("Tree", "Date")) ->
+    combined
+
+# At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
+# Here the data are joined and include any NAs or NaNs in any column
+
+combined %>% 
+  mutate(Date = date(Timestamp)) %>% 
+  group_by(Date, DOY, Tree, PAR_group) %>% 
+  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
+  ungroup() %>% 
+  log_obs("summarise_if by date") %>% 
+  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
+  log_obs("daily") -> daily
 ```
 
 ## Diagnostic plots for weather data
@@ -94,69 +120,6 @@ wx_dat %>%
 ggplot(wx_dat, aes(DOY, PAR)) + 
   geom_point(alpha = 0.2, color = "grey60", na.rm = TRUE) + 
   geom_point(aes(y = Daytime_PAR, color = PAR_group))
-```
-
-```{r data-cleaning, echo = FALSE, message = FALSE}
-
-# First, we need to filter for the Js trees that also have Rs measurements
-rs_trees <- unique(ports_lt$Tree)
-
-sapflow_k_long %>% 
-  calc_sapflux(sapwood_area) %>% 
-  filter(Tree %in% rs_trees) %>% 
-  log_obs("filter for rs_trees") %>% 
-  # Then, we need to round the timestamp to the nearest hour and take hourly averages
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>% 
-  # Now that all data are on a common timeframe, we can take the hourly mean of each dataset
-  group_by(Timestamp, Tree, Species_code) %>% 
-  summarise(Js_avg = mean(Js, na.rm = TRUE),
-            F_avg = mean(F, na.rm = TRUE),
-            .groups = "drop") %>% 
-  log_obs("summarise sapflow by hour") -> sapflow
-
-####RESOLVE THIS 
-rs_long %>%
-  log_obs("initial rs_long") %>% 
-  mutate(Timestamp = round_date(Timestamp, unit = "hour")) %>%
-  group_by(Timestamp, Tree, Species_code) %>%
-  summarise(rs_avg = mean(Flux), 
-            T5 = mean(T5, na.rm = TRUE), 
-            SM = mean(SMoist, na.rm = TRUE),
-            .groups = "drop") %>% 
-  log_obs("summarise rs_long by hour") %>% 
-  # need to replace bad T5 and SM data - column flagging data 
-  filter(rs_avg > 0, rs_avg < 25, SM > 0, SM < 1, T5 < 50) %>%
-  log_obs("filtering rs_long") -> rs_formatted
-
-sapflow %>%
-  log_obs("sapflow") %>% 
-  left_join(rs_formatted, by = c("Timestamp", "Tree", "Species_code")) %>% 
-  log_obs("join with rs_formatted") %>% 
-  left_join(wx_dat, by = "Timestamp") %>% 
-  log_obs("join with wx_dat") %>% 
-  complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
-  log_obs("combined") -> combined
-
-# For each tree and date, grab the three rows with maximum PAR, compute the mean Js 
-# for those rows, and then merge the result back into `combined`. 
-combined %>% 
-    group_by(Tree, Date) %>% 
-    slice_max(PAR, n = 3) %>% 
-    summarise(Fs_maxPAR = mean(F_avg, na.rm = TRUE)) %>% 
-    right_join(combined, by = c("Tree", "Date")) ->
-    combined
-
-# At this point, `combined` holds rs, js, and weather data rounded to the nearest hour
-# Here the data are joined and include any NAs or NaNs in any column
-
-combined %>% 
-  mutate(Date = date(Timestamp)) %>% 
-  group_by(Date, DOY, Tree, PAR_group) %>% 
-  summarise_if(is.numeric, mean, na.rm = TRUE) %>% 
-  ungroup() %>% 
-  log_obs("summarise_if by date") %>% 
-  complete(Tree, Date = seq(ymd(min(Date)), ymd(max(Date)), by = "day")) %>% 
-  log_obs("daily") -> daily
 ```
 
 ## Hysteresis between temperature and Rs / Js
