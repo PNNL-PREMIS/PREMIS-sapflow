@@ -89,6 +89,7 @@ combine <- function(rs, sapflow, rs_trees) {
     left_join(wx_dat, by = "Timestamp") %>% 
     log_obs("join with wx_dat") %>% 
     complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
+    ungroup() %>% 
     log_obs("combined")
 }
 
