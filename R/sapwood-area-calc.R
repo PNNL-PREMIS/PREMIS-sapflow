@@ -17,9 +17,8 @@ sapwood_area_calc <- function(js_trees, sapwood_depth) {
   
   js_trees %>% 
     # calculate area of the tree and heartwood, the difference will give us sapwood area
-    mutate(t_area_cm2 = pi * (DBH / 2)^2, 
+    mutate(t_area_cm2 = pi * (DBH / 2) ^ 2, 
            hw_area_cm2 = pi * ((DBH - 2 * pred_sd) / 2) ^ 2,
            sw_area_cm2 = t_area_cm2 - hw_area_cm2) %>% 
     select(Tree, sw_area_cm2)
-
 }

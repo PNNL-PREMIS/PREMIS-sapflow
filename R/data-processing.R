@@ -25,7 +25,7 @@ read_csv("../SERC/baseliner_data/control_Kest_yr.csv",
 #SP needs to clarify what this does
 sapflow_raw$Hour[sapflow_raw$Hour == ""] <- 0
 
-# Baseliner outputs the data in an amiguous format, we want to reshape
+# Baseliner outputs the data in an ambiguous format, we want to reshape
 sapflow_raw %>% 
   mutate(Timestamp = mdy_hm(paste(Month, Day, Year, Hour, Min), tz = "EST")) %>%
   select(-Y, -Year, - Day, - Month) %>% 
