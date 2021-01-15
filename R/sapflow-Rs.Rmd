@@ -289,18 +289,21 @@ Js and Rs will be correlated at some lag of (probably) multiple hours, because o
 We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
 
 ```{r species-comparison, echo = FALSE}
+# Hysteresis by tree
 combined %>%
   group_by(Tree) %>%
   do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) -> q1
 
+# ...and by average of all trees
 combined %>% 
   group_by(Timestamp) %>% 
-  summarise(Rs = mean(rs_avg, na.rm = TRUE), Fs = mean(F_avg, na.rm = TRUE)) %>% 
-  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) -> q1_eco 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), Fs = mean(F_avg, na.rm = TRUE), .groups = "drop") %>% 
+  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) %>% 
+  mutate(Tree = "All" ) -> q1_eco
 
-ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
-
-ggplot(q1_eco, aes(x = Hour, y = Cor)) + geom_line() + ggtitle("Ecosystem scale")
+ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + 
+  geom_line() + 
+  geom_line(data = q1_eco, color = "black", linetype = 2)
 
 q1 %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
