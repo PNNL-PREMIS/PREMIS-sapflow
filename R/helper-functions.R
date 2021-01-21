@@ -54,7 +54,7 @@ combine <- function(rs, sapflow, rs_trees) {
   # `rs_trees` is a character vector of rs tree labels
   # returns a combined dataframe for analysis
   
-  #First, we need to put sapflow and rs data on a similar timestamp so we can join 
+  # First, we need to put sapflow and rs data on a similar timestamp so we can join 
   sapflow %>% 
     calc_sapflux(sapwood_area) %>% 
     filter(Tree %in% rs_trees) %>% 
@@ -89,13 +89,12 @@ combine <- function(rs, sapflow, rs_trees) {
     left_join(wx_dat, by = "Timestamp") %>% 
     log_obs("join with wx_dat") %>% 
     complete(Tree, Timestamp = seq(min(Timestamp), max(Timestamp), by = "hour")) %>% 
+    ungroup() %>% 
     log_obs("combined")
-  
 }
 
 ## Function to match days with similar weather conditions
 ## Created 1/20/2020 for Rs-Js analysis | Stephanie Pennington
-
 similar_days <- function(day_of_year, climate_data, lookahead, constraints) {
   # Find all days in a window (of size `window`) around `doy` for
   # which the air temperature is within `tair_delta` of the tair on `doy`
@@ -111,7 +110,7 @@ similar_days <- function(day_of_year, climate_data, lookahead, constraints) {
   # to the beginning or end of the time series
   
   if(sum(constraints < 0) > 0) {
-    stop("Constrains must be positive")
+    stop("Constraints must be positive")
   }
   
   if(!day_of_year %in% climate_data$DOY) {
@@ -191,7 +190,7 @@ con <- c("x" = 1, "y" = 2)
 x <- similar_days(clim, day_of_year = 101, lookahead = nrow(clim), constraints = con)
 expect_equal(x, c(103, 104))
 
-# Constrains must be positive
+# Constraints must be positive
 con <- c("x" = 1, "y" = -2)
 expect_error(similar_days(clim, day_of_year = 104, lookahead = 2, constraints = con),
-             regexp = "Constrains must be positive")
+             regexp = "Constraints must be positive")

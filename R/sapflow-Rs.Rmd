@@ -289,18 +289,21 @@ Js and Rs will be correlated at some lag of (probably) multiple hours, because o
 We expect there to be differences in peak lag and correlation between the two species - Tulip Poplar and Red Maple - driven by path length difference and light availability.
 
 ```{r species-comparison, echo = FALSE}
+# Hysteresis by tree
 combined %>%
   group_by(Tree) %>%
   do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) -> q1
 
+# ...and by average of all trees
 combined %>% 
   group_by(Timestamp) %>% 
-  summarise(Rs = mean(rs_avg, na.rm = TRUE), Fs = mean(F_avg, na.rm = TRUE)) %>% 
-  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) -> q1_eco 
+  summarise(Rs = mean(rs_avg, na.rm = TRUE), Fs = mean(F_avg, na.rm = TRUE), .groups = "drop") %>% 
+  do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) %>% 
+  mutate(Tree = "All" ) -> q1_eco
 
-ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + geom_line()
-
-ggplot(q1_eco, aes(x = Hour, y = Cor)) + geom_line() + ggtitle("Ecosystem scale")
+ggplot(q1, aes(x = Hour, y = Cor, color = Tree)) + 
+  geom_line() + 
+  geom_line(data = q1_eco, color = "black", linetype = 2)
 
 q1 %>% 
   left_join(inventory, by = c("Tree" = "Sapflux")) %>% 
@@ -323,7 +326,7 @@ q1 %>%
 #### H2.1. Hypothesis. 
 We expect to see changes in the strength and speed of coupling, probably because of seasonal changes in photosynthetic capacity and carbon allocation (e.g. reflected in stem diameter growth data).
 
-- note: this dataset includes data from 2018 (wet year) AND 2019 (avg year w drought in July), which might be why theres some stronger correlations. might be useful to split this graph by **year** as well 
+- note: this dataset includes data from 2018 (wet year) AND 2019 (avg year w drought in July)
 
 ```{r seasonal-changes, echo = FALSE}
 growing_season <- c(4, 5, 6, 7, 8, 9, 10)  # April through October
@@ -331,33 +334,40 @@ growing_season <- c(4, 5, 6, 7, 8, 9, 10)  # April through October
 combined %>% 
   mutate(Month = month(Timestamp), 
          Week = week(Timestamp)) %>% 
-  filter(Month %in% growing_season) -> growing # filter for growing season
+  select(Timestamp, Month, Week, rs_avg, F_avg) %>% 
+  filter(Month %in% growing_season) %>%  # filter for growing season
+  mutate(YearGS = year(Timestamp) + scales::rescale(Week)) -> growing
 
 growing %>% 
   group_by(Timestamp) %>% 
   summarise(Rs = mean(rs_avg, na.rm = TRUE), 
-            Fs = mean(F_avg, na.rm = TRUE), Week = mean(Week)) %>% 
-  group_by(Week) %>% 
+            Fs = mean(F_avg, na.rm = TRUE), 
+            YearGS = mean(YearGS),
+            .groups = "drop") %>% 
+  group_by(YearGS) %>% 
   do(compute_lag_cor(.$Rs, .$Fs, hour_range = c(0, 23))) %>% 
   ungroup() %>% 
   na.omit() -> q2_eco 
 
 growing %>% 
-  group_by(Week, Tree) %>% 
+  group_by(YearGS, Tree) %>% 
   do(compute_lag_cor(.$rs_avg, .$F_avg, hour_range = c(0, 23))) %>% 
   ungroup() %>% 
   na.omit() -> cor_by_week
 
-ggplot(data = cor_by_week, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+ggplot(data = cor_by_week, aes(x = YearGS, y = Hour, fill = Cor)) + 
   geom_tile() + 
   facet_wrap(~Tree) + 
   scale_fill_distiller(palette = "RdBu") +
-  xlab("Week of Year") + ylab("Hour of Day")
+  geom_vline(xintercept = 2019.0, size = 1, linetype = 2) +
+  xlab("Year + fraction of growing season") + ylab("Hour of day")
 
-ggplot(data = q2_eco, aes(x = as.numeric(Week), y = Hour, fill = Cor)) + 
+ggplot(data = q2_eco, aes(x = YearGS, y = Hour, fill = Cor)) + 
   geom_tile() +
   scale_fill_distiller(palette = "RdBu") +
-  xlab("Week of Year") + ylab("Hour of Day") + ggtitle("Ecosystem Scale")
+  geom_vline(xintercept = 2019.0, size = 1, linetype = 2) +
+  xlab("Year + fraction of growing season") + ylab("Hour of day") +
+  ggtitle("Ecosystem Scale")
 
 ```
 
